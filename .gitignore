@@ -1,0 +1,12 @@
+.venv/
+
+
+.snakemake/
+
+__pycache__/ 
+
+large_files/
+
+artifacts/
+
+

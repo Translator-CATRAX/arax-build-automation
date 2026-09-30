@@ -1,0 +1,4 @@
+kgx_dir: /home/hodgesf/Desktop/code/database/tier0-20260621/knowledge_graph
+babel_sqlite: /home/hodgesf/Desktop/code/large_files/babel-20260722.sqlite
+output_root: /home/hodgesf/Desktop/code/database/autobuild_test
+

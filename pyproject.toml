@@ -1,0 +1,13 @@
+[project]
+name = "autobuild"
+version = "0.1.0"
+description = "A repository for the automation of the ARAX system based on the tier0 Translator KG."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "biolink-helper-pkg==1.0.1",
+    "lxml==4.9.4",
+    "pyyaml==6.0.2",
+    "snakemake==9.27.0",
+    "stitch-proj==0.1.3",
+]
