@@ -26,17 +26,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sqlite3
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
-sys.path.append(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "BiolinkHelper")
-)
-from biolink_helper import get_biolink_helper  # noqa: E402  pylint: disable=wrong-import-position,import-error
+from biolink_helper_pkg import BiolinkHelper
 
 
 TIER0_ARRAY_DELIMITER = "ǂ"
@@ -161,7 +156,8 @@ def create_tier0_overlay_sqlite_db(
     nodes_path: Path,
     edges_path: Path,
     output_db: Path,
-    biolink_version: Optional[str] = None,
+    biolink_version: str,
+    biolink_cache_dir: Path,
 ) -> None:
     """Build the tier0-info-for-overlay SQLite database (edge_publications,
     neighbors, category_counts) from Tier0 nodes and edges JSONL files."""
@@ -182,7 +178,8 @@ def create_tier0_overlay_sqlite_db(
     logging.info("Loaded %s nodes", f"{len(nodes_dict):,}")
 
     logging.info("Expanding biolink category ancestors for each node...")
-    bh = get_biolink_helper(biolink_version)
+    biolink_cache_dir.mkdir(parents=True, exist_ok=True)
+    bh = BiolinkHelper(biolink_version, str(biolink_cache_dir))
     expanded_labels_by_node: Dict[str, List[str]] = {}
     for node_id, node in nodes_dict.items():
         category = node.get("category")
@@ -288,21 +285,39 @@ def main() -> None:
                         help="Tier0 build date stamp in YYYYMMDD form (used in the filename).")
     parser.add_argument("--schema-version", default="1.0",
                         help="Schema version stamp embedded in the filename. Default: 1.0")
-    parser.add_argument(
+    biolink = parser.add_mutually_exclusive_group(required=True)
+    biolink.add_argument(
         "--biolink-version",
-        default=None,
-        help="Biolink version for category-ancestor expansion. "
-             "Defaults to the version ARAX is currently pinned to.",
+        help="Biolink version for category-ancestor expansion.",
+    )
+    biolink.add_argument(
+        "--graph-metadata",
+        type=Path,
+        help="Tier0 graph-metadata.json; its biolinkVersion is used for "
+             "category-ancestor expansion.",
+    )
+    parser.add_argument(
+        "--biolink-cache-dir",
+        type=Path,
+        required=True,
+        help="Directory where the Biolink model YAML and lookup map are "
+             "downloaded and cached.",
     )
 
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    biolink_version = args.biolink_version or json.loads(
+        args.graph_metadata.read_text())["biolinkVersion"]
+    logging.info("Biolink version: %s", biolink_version)
+
     output_db = _build_output_filename(args.output_dir, args.tier0_build_date, args.schema_version)
     logging.info("Output: %s", output_db)
 
-    create_tier0_overlay_sqlite_db(args.nodes, args.edges, output_db, args.biolink_version)
+    create_tier0_overlay_sqlite_db(
+        args.nodes, args.edges, output_db, biolink_version, args.biolink_cache_dir
+    )
 
     logging.info("Done.")
 

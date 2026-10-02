@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "biolink-helper-pkg==1.0.1",
     "lxml==4.9.4",
+    "numpy==2.5.3",
     "pyyaml==6.0.2",
     "snakemake==9.27.0",
     "stitch-proj==0.1.3",

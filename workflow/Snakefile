@@ -1,0 +1,64 @@
+import sys
+from pathlib import Path
+
+configfile: "config/config.yaml"
+OUTPUT_ROOT = Path(config["output_root"])
+SCRIPTS = Path(workflow.basedir) / "scripts"
+
+sys.path.insert(0, str(SCRIPTS / "sources"))
+import webhost
+
+# Pick the Tier0 and DrugBank versions to build against: the newest of what is
+# local and what is on the webhost (or a version pinned in the config). Only
+# listings are fetched here; the fetch rules download a version when its local
+# files are missing, so an up-to-date local copy is never re-downloaded.
+WEBHOST = config["webhost"]
+TIER0_ROOT = Path(config["tier0_root"])
+DRUGBANK_DIR = Path(config["drugbank_dir"])
+
+VERSION = webhost.resolve(
+    "Tier0",
+    webhost.local_tier0_versions(TIER0_ROOT),
+    lambda: webhost.remote_tier0_versions(WEBHOST, config["webhost_tier0_root"]),
+    config.get("tier0_version"),
+)
+DRUGBANK_VERSION = webhost.resolve(
+    "DrugBank",
+    webhost.local_drugbank_versions(DRUGBANK_DIR),
+    lambda: {v} if (v := webhost.remote_drugbank_version(WEBHOST, config["webhost_drugbank"])) else set(),
+    config.get("drugbank_version"),
+)
+
+TIER0 = f"tier0-{VERSION}"
+KGX_DIR = TIER0_ROOT / TIER0 / "knowledge_graph"
+GRAPH_METADATA = KGX_DIR / "graph-metadata.json"
+DRUGBANK_XML = DRUGBANK_DIR / f"drugbank-{DRUGBANK_VERSION}.xml"
+
+BUILD_DIR = OUTPUT_ROOT / TIER0
+LOG_DIR = BUILD_DIR / "logs"
+BENCH_DIR = BUILD_DIR / "benchmarks"
+
+AUTOCOMPLETE_DB = BUILD_DIR / f"autocomplete_v1.0_{TIER0}.sqlite"
+OVERLAY_DB = BUILD_DIR / f"tier0-info-for-overlay_v1.0_{TIER0}.sqlite"
+CURIE_TO_PMIDS_DB = BUILD_DIR / f"curie_to_pmids_v1.0_{TIER0}.sqlite"
+CONCEPTNAME_TO_PMIDS_DB = BUILD_DIR / "conceptname_to_pmids.sqlite"
+FDA_DRUGS_PICKLE = BUILD_DIR / "fda_approved_drugs_v1.0.pickle"
+PUBMED_MANIFEST = BUILD_DIR / "pubmed_manifest.json"
+
+# Artifacts that get staged for release. Each one gets an md5 in MD5_DIR;
+# asking for the md5 makes Snakemake build the artifact first.
+MD5_DIR = BUILD_DIR / "md5_sums"
+RELEASE_ARTIFACTS = [AUTOCOMPLETE_DB, OVERLAY_DB, CURIE_TO_PMIDS_DB, FDA_DRUGS_PICKLE]
+
+
+rule all:
+    input:
+        [MD5_DIR / f"{artifact.name}.md5" for artifact in RELEASE_ARTIFACTS],
+
+
+include: "rules/sources.smk"
+include: "rules/autocomplete.smk"
+include: "rules/overlay.smk"
+include: "rules/curie_pmids.smk"
+include: "rules/fda_drugs.smk"
+include: "rules/md5.smk"

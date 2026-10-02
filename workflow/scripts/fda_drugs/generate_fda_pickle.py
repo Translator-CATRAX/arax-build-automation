@@ -6,7 +6,7 @@ import argparse
 import pickle
 import xml.etree.ElementTree as ET
 
-import stitch_proj.local_babel as lb
+import stitch.local_babel as lb
 
 __author__ = 'Frankie Hodges'
 __copyright__ = 'Oregon State University'

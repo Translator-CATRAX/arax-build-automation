@@ -1,4 +1,18 @@
-kgx_dir: /home/hodgesf/Desktop/code/database/tier0-20260621/knowledge_graph
 babel_sqlite: /home/hodgesf/Desktop/code/large_files/babel-20260722.sqlite
 output_root: /home/hodgesf/Desktop/code/database/autobuild_test
+pubmed_dir: /home/hodgesf/Desktop/code/large_files/pubmed
 
+# Inputs are pulled from the webhost when it has a newer version than what is
+# local, or when nothing is local. Access is over SSH (key-based, no password).
+webhost: ubuntu@kg2webhost.rtx.ai
+webhost_tier0_root: /var/www/kg2webhost          # holds tier0-YYYYMMDD/translator_kg.tar.zst
+webhost_drugbank: /home/ubuntu/drugbank.xml      # private: DrugBank is not redistributable
+
+# Local copies. Tier0 unpacks to {tier0_root}/tier0-YYYYMMDD/knowledge_graph/,
+# DrugBank to {drugbank_dir}/drugbank-{exported-on}.xml.
+tier0_root: /home/hodgesf/Desktop/code/database
+drugbank_dir: /home/hodgesf/Desktop/code/large_files/drugbank
+
+# Uncomment to build against a specific version instead of the newest.
+# tier0_version: "20260621"
+# drugbank_version: "2023-01-04"

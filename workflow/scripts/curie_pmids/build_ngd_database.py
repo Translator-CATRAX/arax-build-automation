@@ -12,9 +12,12 @@ import logging
 import multiprocessing
 import os
 import pathlib
+import re
 import sqlite3
 import subprocess
 import time
+
+import numpy as np
 
 from lxml import etree
 from extraction_script import process_names
@@ -23,6 +26,9 @@ from stitch.local_babel import (
     map_curie_to_preferred_curies,
     map_name_to_curie,
 )
+
+# pmids are stored as packed int32 blobs
+INT32_MAX = 2**31 - 1
 
 DEFAULT_PUBMED_DIR = os.environ.get("NGD_PUBMED_DIR")
 DEFAULT_BABEL_DB = os.environ.get("NGD_BABEL_DB")
@@ -348,7 +354,7 @@ class NGDDatabaseBuilder:
         out_cursor.execute("""
             CREATE TABLE curie_to_pmids (
                 curie TEXT PRIMARY KEY,
-                pmids TEXT
+                pmids BLOB
             )
         """)
 
@@ -366,18 +372,20 @@ class NGDDatabaseBuilder:
         for curie, pmid in rows_iter:
             if curie != current_curie:
                 if current_curie is not None:
+                    blob = np.array(sorted(current_pmids), dtype=np.int32).tobytes()
                     write_cursor.execute(
                         "INSERT INTO curie_to_pmids VALUES (?, ?)",
-                        (current_curie, json.dumps(sorted(current_pmids))),
+                        (current_curie, blob),
                     )
                     n_written += 1
                 current_curie = curie
                 current_pmids = set()
             current_pmids.add(pmid)
         if current_curie is not None:
+            blob = np.array(sorted(current_pmids), dtype=np.int32).tobytes()
             write_cursor.execute(
                 "INSERT INTO curie_to_pmids VALUES (?, ?)",
-                (current_curie, json.dumps(sorted(current_pmids))),
+                (current_curie, blob),
             )
             n_written += 1
 
@@ -423,10 +431,14 @@ class NGDDatabaseBuilder:
                 pmid_nums = []
                 for p in pubs:
                     if isinstance(p, str) and p.upper().startswith("PMID:"):
+                        # Tier 0 has malformed values like "PMID:10400664; 36448459",
+                        # "PMID:unassigned1312" and "PMID:PMC7642658". Keep only
+                        # purely numeric tokens; stripping non-digits would
+                        # fabricate PMIDs.
                         local = p.split(":", 1)[1]
-                        digits = "".join(c for c in local if c.isdigit())
-                        if digits:
-                            pmid_nums.append(int(digits))
+                        for token in re.split(r"[;,:\s]+", local):
+                            if token.isdigit() and 0 < int(token) <= INT32_MAX:
+                                pmid_nums.append(int(token))
                 if not pmid_nums:
                     continue
 
