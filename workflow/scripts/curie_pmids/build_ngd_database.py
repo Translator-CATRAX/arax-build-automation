@@ -151,6 +151,17 @@ def _resolve_one(item):
     return curie, None, nums, None
 
 
+def _finalize_db(conn):
+    # WAL is only for build speed. A WAL-mode file needs write access to its
+    # directory even to be read, so switch back to a rollback journal before
+    # shipping. VACUUM drops the pages freed by the staging table, which are
+    # most of the file.
+    logging.info("Vacuuming...")
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("VACUUM")
+    conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
@@ -312,7 +323,7 @@ class NGDDatabaseBuilder:
         conn.commit()
         cursor.execute("DROP TABLE staging")
         conn.commit()
-        conn.close()
+        _finalize_db(conn)
 
         logging.info("Done concept DB in %.2f min (%d files, %d errors, %d concepts)",
                      (time.time() - start) / 60, total_files, total_errors, n_written)
@@ -391,7 +402,7 @@ class NGDDatabaseBuilder:
 
         out_cursor.execute("DROP TABLE staging")
         out_conn.commit()
-        out_conn.close()
+        _finalize_db(out_conn)
 
         logging.info("Done curie DB in %.2f min (%d curies)",
                      (time.time() - start) / 60, n_written)

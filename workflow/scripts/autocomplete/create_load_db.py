@@ -43,7 +43,8 @@ row_count = 0
 uc_terms = {}
 
 print("Loading node names")
-with open(args.input, 'r', encoding="latin-1", errors="replace") as nodeData:
+with open(args.input, 'r', encoding="utf-8") as nodeData:
+    next(nodeData, None)  # skip the "id\tname" header written by extract_names_ids.py
     for line in nodeData:
         parts = line.rstrip("\n").split("\t")
         if len(parts) < 2:
