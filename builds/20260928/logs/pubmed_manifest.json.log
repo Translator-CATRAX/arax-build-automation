@@ -1,0 +1,4 @@
+2026-10-06 14:43:33,796 INFO baseline: 1334 files on server, 0 to download
+2026-10-06 14:43:34,394 INFO updatefiles: 317 files on server, 1 to download
+2026-10-06 14:43:37,708 INFO updatefiles: downloaded 1/1
+2026-10-06 14:43:37,715 INFO Wrote manifest /home/hodgesf/Desktop/code/database/20260928/pubmed_manifest.json

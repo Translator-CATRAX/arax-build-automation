@@ -1,0 +1,42 @@
+2026-10-06 14:43:32,821 INFO Biolink version (from /home/hodgesf/Desktop/code/large_files/translator_kg/20260928/graph-metadata.json): 4.4.4
+2026-10-06 14:43:32,821 INFO Output: /home/hodgesf/Desktop/code/database/20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite
+2026-10-06 14:43:32,821 INFO Loading node categories...
+2026-10-06 14:43:36,478 INFO Loaded 1,850,733 nodes
+2026-10-06 14:43:36,478 INFO Expanding biolink category ancestors for each node...
+2026-10-06T14:43:36.478428: DEBUG: Loading pickle file: /home/hodgesf/Desktop/code/database/.cache/biolink/biolink_model_4.4.4.yaml
+2026-10-06 14:43:37,516 INFO 59 distinct category sets
+2026-10-06 14:43:37,520 INFO Streaming edges and writing edge_publications rows...
+2026-10-06 14:43:44,807 INFO   ... streamed 1,000,000 edges
+2026-10-06 14:43:47,570 INFO   ... streamed 2,000,000 edges
+2026-10-06 14:43:50,211 INFO   ... streamed 3,000,000 edges
+2026-10-06 14:43:52,677 INFO   ... streamed 4,000,000 edges
+2026-10-06 14:43:55,170 INFO   ... streamed 5,000,000 edges
+2026-10-06 14:44:01,927 INFO   ... streamed 6,000,000 edges
+2026-10-06 14:44:13,804 INFO   ... streamed 7,000,000 edges
+2026-10-06 14:44:19,711 INFO   ... streamed 8,000,000 edges
+2026-10-06 14:44:25,546 INFO   ... streamed 9,000,000 edges
+2026-10-06 14:44:31,442 INFO   ... streamed 10,000,000 edges
+2026-10-06 14:44:37,462 INFO   ... streamed 11,000,000 edges
+2026-10-06 14:44:44,536 INFO   ... streamed 12,000,000 edges
+2026-10-06 14:44:48,257 INFO   ... streamed 13,000,000 edges
+2026-10-06 14:44:53,398 INFO   ... streamed 14,000,000 edges
+2026-10-06 14:45:00,301 INFO   ... streamed 15,000,000 edges
+2026-10-06 14:45:05,425 INFO   ... streamed 16,000,000 edges
+2026-10-06 14:45:09,081 INFO   ... streamed 17,000,000 edges
+2026-10-06 14:45:27,466 INFO   ... streamed 18,000,000 edges
+2026-10-06 14:45:41,479 INFO   ... streamed 19,000,000 edges
+2026-10-06 14:45:55,033 INFO   ... streamed 20,000,000 edges
+2026-10-06 14:45:58,024 INFO   ... streamed 21,000,000 edges
+2026-10-06 14:46:02,237 INFO   ... streamed 22,000,000 edges
+2026-10-06 14:46:05,299 INFO   ... streamed 23,000,000 edges
+2026-10-06 14:46:08,450 INFO   ... streamed 24,000,000 edges
+2026-10-06 14:46:11,626 INFO   ... streamed 25,000,000 edges
+2026-10-06 14:46:14,770 INFO   ... streamed 26,000,000 edges
+2026-10-06 14:46:18,015 INFO   ... streamed 27,000,000 edges
+2026-10-06 14:46:21,326 INFO   ... streamed 28,000,000 edges
+2026-10-06 14:46:24,515 INFO   ... streamed 29,000,000 edges
+2026-10-06 14:46:27,647 INFO   ... streamed 30,000,000 edges
+2026-10-06 14:46:29,248 INFO Inserted 8,239,919 edge_publications rows
+2026-10-06 14:46:29,346 INFO Writing neighbors table (1,766,267 nodes)...
+2026-10-06 14:46:47,141 INFO Writing category_counts table...
+2026-10-06 14:46:47,280 INFO Done.

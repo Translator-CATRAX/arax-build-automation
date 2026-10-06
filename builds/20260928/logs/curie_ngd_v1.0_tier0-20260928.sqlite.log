@@ -1,0 +1,19 @@
+2026-10-06 15:25:37,656 INFO Loading PMIDs from /home/hodgesf/Desktop/code/database/20260928/curie_to_pmids_v1.0_tier0-20260928.sqlite
+2026-10-06 15:25:39,522 INFO Loaded 1,268,368 CURIEs with PMIDs
+2026-10-06 15:25:39,522 INFO Reading graph neighbors from /home/hodgesf/Desktop/code/large_files/translator_kg/20260928/nodes.jsonl and /home/hodgesf/Desktop/code/large_files/translator_kg/20260928/edges.jsonl
+2026-10-06 15:25:55,195 INFO   read 5,000,000 edges (387932 edges/sec)
+2026-10-06 15:26:12,048 INFO   read 10,000,000 edges (336233 edges/sec)
+2026-10-06 15:26:30,244 INFO   read 15,000,000 edges (312905 edges/sec)
+2026-10-06 15:27:00,766 INFO   read 20,000,000 edges (254910 edges/sec)
+2026-10-06 15:27:11,656 INFO   read 25,000,000 edges (279799 edges/sec)
+2026-10-06 15:27:21,753 INFO   read 30,000,000 edges (301671 edges/sec)
+2026-10-06 15:27:22,830 INFO 759,178 CURIEs are in the graph (509,190 skipped); 29,701,195 neighbor pairs
+2026-10-06 15:27:22,831 INFO Computing NGDs with 24 workers
+2026-10-06 15:27:58,296 INFO   wrote 100,000 / 759,178
+2026-10-06 15:27:58,755 INFO   wrote 200,000 / 759,178
+2026-10-06 15:27:58,849 INFO   wrote 300,000 / 759,178
+2026-10-06 15:27:58,937 INFO   wrote 400,000 / 759,178
+2026-10-06 15:27:59,025 INFO   wrote 500,000 / 759,178
+2026-10-06 15:27:59,112 INFO   wrote 600,000 / 759,178
+2026-10-06 15:27:59,309 INFO   wrote 700,000 / 759,178
+2026-10-06 15:27:59,638 INFO Done: 759,178 CURIEs in 2.4 min

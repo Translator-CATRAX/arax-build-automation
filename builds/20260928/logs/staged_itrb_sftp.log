@@ -1,0 +1,25 @@
+Uploading 10 files (6.6 GB) to team-expander-hodgesf@sftp.transltr.io:
+  autocomplete_v1.0_tier0-20260928.sqlite -> databases/tier0-20260928/
+  curie_ngd_v1.0_tier0-20260928.sqlite -> databases/tier0-20260928/
+  curie_to_pmids_v1.0_tier0-20260928.sqlite -> databases/tier0-20260928/
+  fda_approved_drugs_v1.0.pickle -> databases/tier0-20260928/
+  tier0-info-for-overlay_v1.0_tier0-20260928.sqlite -> databases/tier0-20260928/
+  autocomplete_v1.0_tier0-20260928.sqlite.md5 -> md5_sums/tier0-20260928/
+  curie_ngd_v1.0_tier0-20260928.sqlite.md5 -> md5_sums/tier0-20260928/
+  curie_to_pmids_v1.0_tier0-20260928.sqlite.md5 -> md5_sums/tier0-20260928/
+  fda_approved_drugs_v1.0.pickle.md5 -> md5_sums/tier0-20260928/
+  tier0-info-for-overlay_v1.0_tier0-20260928.sqlite.md5 -> md5_sums/tier0-20260928/
+sftp> -mkdir databases/tier0-20260928
+sftp> -mkdir md5_sums/tier0-20260928
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/autocomplete_v1.0_tier0-20260928.sqlite" "databases/tier0-20260928/autocomplete_v1.0_tier0-20260928.sqlite"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/curie_ngd_v1.0_tier0-20260928.sqlite" "databases/tier0-20260928/curie_ngd_v1.0_tier0-20260928.sqlite"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/curie_to_pmids_v1.0_tier0-20260928.sqlite" "databases/tier0-20260928/curie_to_pmids_v1.0_tier0-20260928.sqlite"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/fda_approved_drugs_v1.0.pickle" "databases/tier0-20260928/fda_approved_drugs_v1.0.pickle"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite" "databases/tier0-20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/md5_sums/autocomplete_v1.0_tier0-20260928.sqlite.md5" "md5_sums/tier0-20260928/autocomplete_v1.0_tier0-20260928.sqlite.md5"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/md5_sums/curie_ngd_v1.0_tier0-20260928.sqlite.md5" "md5_sums/tier0-20260928/curie_ngd_v1.0_tier0-20260928.sqlite.md5"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/md5_sums/curie_to_pmids_v1.0_tier0-20260928.sqlite.md5" "md5_sums/tier0-20260928/curie_to_pmids_v1.0_tier0-20260928.sqlite.md5"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/md5_sums/fda_approved_drugs_v1.0.pickle.md5" "md5_sums/tier0-20260928/fda_approved_drugs_v1.0.pickle.md5"
+sftp> put "/home/hodgesf/Desktop/code/database/20260928/md5_sums/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite.md5" "md5_sums/tier0-20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite.md5"
+
+Staged 5 artifacts and their md5 files on team-expander-hodgesf@sftp.transltr.io
