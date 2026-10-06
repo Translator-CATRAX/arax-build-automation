@@ -1,0 +1,22 @@
+{
+  "autocomplete": {
+    "terms rows": 3637914
+  },
+  "tier0_info_for_overlay": {
+    "edge_publications rows": 8239919,
+    "neighbors rows": 1766267,
+    "category_counts rows": 68
+  },
+  "curie_to_pmids": {
+    "CURIEs": 1268342,
+    "(CURIE, PMID) pairs": 400779758
+  },
+  "curie_ngd": {
+    "CURIEs": 759176,
+    "CURIEs with neighbor NGDs": 225703,
+    "neighbor NGD pairs": 13043772
+  },
+  "fda_approved_drugs": {
+    "drug CURIEs": 4796
+  }
+}

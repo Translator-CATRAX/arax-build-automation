@@ -65,7 +65,7 @@ rule report:
     log:
         artifact_log(BUILD_REPORT),
     shell:
-        "python {input.script} --build-dir {BUILD_DIR}"
+        "python {input.script} --build-dir {BUILD_DIR} --records-dir {RECORDS_ROOT}"
         f" --artifact autocomplete={AUTOCOMPLETE_DB}"
         f" --artifact tier0_info_for_overlay={OVERLAY_DB}"
         f" --artifact curie_to_pmids={CURIE_TO_PMIDS_DB}"

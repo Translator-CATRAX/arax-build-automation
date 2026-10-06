@@ -2,9 +2,10 @@
 """Write the build report: what was built, from what, how long it took, and
 how each artifact's counts changed since the previous build.
 
-The previous build is the newest YYYYMMDD directory next to this build's (and
-older than it) that has an artifact_stats.json. This build's counts are saved
-to --stats-output for the next build to compare against.
+The previous build is the newest YYYYMMDD directory under --records-dir (and
+older than this build) that has an artifact_stats.json. This build's counts
+are saved to --stats-output, and from there to its own build record, for the
+next build to compare against.
 """
 
 import argparse
@@ -20,10 +21,12 @@ from artifact_stats import artifact_stats
 STATS_FILENAME = "artifact_stats.json"
 
 
-def previous_build(build_dir: Path) -> Path | None:
-    """The newest earlier build directory that saved artifact stats."""
-    earlier = [d for d in build_dir.parent.iterdir()
-               if re.fullmatch(r"\d{8}", d.name) and d.name < build_dir.name
+def previous_build(records_dir: Path, version: str) -> Path | None:
+    """The newest earlier build record that saved artifact stats."""
+    if not records_dir.is_dir():
+        return None
+    earlier = [d for d in records_dir.iterdir()
+               if re.fullmatch(r"\d{8}", d.name) and d.name < version
                and (d / STATS_FILENAME).exists()]
     return max(earlier, default=None)
 
@@ -87,6 +90,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--build-dir", type=Path, required=True)
+    parser.add_argument("--records-dir", type=Path, required=True,
+                        help="Build records, one YYYYMMDD directory per build.")
     parser.add_argument("--artifact", action="append", required=True, metavar="KIND=PATH",
                         help="A release artifact; KIND as in artifact_stats.py.")
     parser.add_argument("--config-dbs", type=Path, required=True)
@@ -107,7 +112,7 @@ def main() -> None:
     stats = artifact_stats(artifacts)
     args.stats_output.write_text(json.dumps(stats, indent=2) + "\n")
 
-    previous_dir = previous_build(build_dir)
+    previous_dir = previous_build(args.records_dir, build_dir.name)
     previous = json.loads((previous_dir / STATS_FILENAME).read_text()) if previous_dir else {}
 
     # The build can span several Snakemake runs (a resumed build reruns only

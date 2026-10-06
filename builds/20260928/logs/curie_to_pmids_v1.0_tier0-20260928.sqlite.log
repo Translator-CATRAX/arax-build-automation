@@ -1,0 +1,178 @@
+2026-10-06 09:10:19,755 INFO: Building conceptname_to_pmids...
+2026-10-06 09:10:19,756 INFO:   baseline: 1334 files
+2026-10-06 09:10:19,757 INFO:   updatefiles: 316 files
+2026-10-06 09:10:19,757 INFO: Parsing PubMed XML with 23 workers
+2026-10-06 09:10:46,814 INFO:   parsed 50 files (0 errors so far)
+2026-10-06 09:11:06,938 INFO:   parsed 100 files (0 errors so far)
+2026-10-06 09:11:28,498 INFO:   parsed 150 files (0 errors so far)
+2026-10-06 09:11:49,429 INFO:   parsed 200 files (0 errors so far)
+2026-10-06 09:12:10,471 INFO:   parsed 250 files (0 errors so far)
+2026-10-06 09:12:32,184 INFO:   parsed 300 files (0 errors so far)
+2026-10-06 09:12:52,525 INFO:   parsed 350 files (0 errors so far)
+2026-10-06 09:13:13,398 INFO:   parsed 400 files (0 errors so far)
+2026-10-06 09:13:33,436 INFO:   parsed 450 files (0 errors so far)
+2026-10-06 09:13:54,564 INFO:   parsed 500 files (0 errors so far)
+2026-10-06 09:14:17,664 INFO:   parsed 550 files (0 errors so far)
+2026-10-06 09:14:37,144 INFO:   parsed 600 files (0 errors so far)
+2026-10-06 09:14:58,882 INFO:   parsed 650 files (0 errors so far)
+2026-10-06 09:15:19,172 INFO:   parsed 700 files (0 errors so far)
+2026-10-06 09:15:41,070 INFO:   parsed 750 files (0 errors so far)
+2026-10-06 09:16:00,882 INFO:   parsed 800 files (0 errors so far)
+2026-10-06 09:16:22,339 INFO:   parsed 850 files (0 errors so far)
+2026-10-06 09:16:41,733 INFO:   parsed 900 files (0 errors so far)
+2026-10-06 09:17:02,437 INFO:   parsed 950 files (0 errors so far)
+2026-10-06 09:17:24,280 INFO:   parsed 1000 files (0 errors so far)
+2026-10-06 09:17:46,119 INFO:   parsed 1050 files (0 errors so far)
+2026-10-06 09:18:05,428 INFO:   parsed 1100 files (0 errors so far)
+2026-10-06 09:18:25,279 INFO:   parsed 1150 files (0 errors so far)
+2026-10-06 09:18:45,883 INFO:   parsed 1200 files (0 errors so far)
+2026-10-06 09:19:05,291 INFO:   parsed 1250 files (0 errors so far)
+2026-10-06 09:19:26,480 INFO:   parsed 1300 files (0 errors so far)
+2026-10-06 09:19:44,359 INFO:   parsed 1350 files (0 errors so far)
+2026-10-06 09:19:59,899 INFO:   parsed 1400 files (0 errors so far)
+2026-10-06 09:20:16,679 INFO:   parsed 1450 files (0 errors so far)
+2026-10-06 09:20:34,921 INFO:   parsed 1500 files (0 errors so far)
+2026-10-06 09:20:49,383 INFO:   parsed 1550 files (0 errors so far)
+2026-10-06 09:21:05,879 INFO:   parsed 1600 files (0 errors so far)
+2026-10-06 09:21:25,778 INFO:   parsed 1650 files (0 errors so far)
+2026-10-06 09:21:45,365 INFO: PMIDs: 41212290 with articles, 7511 deleted, 41204779 kept
+2026-10-06 09:21:45,580 INFO: Indexing staging table...
+2026-10-06 09:24:20,624 INFO: Aggregating concept_name -> pmids...
+2026-10-06 09:24:26,470 INFO:   wrote 200000 concepts
+2026-10-06 09:25:22,508 INFO:   wrote 400000 concepts
+2026-10-06 09:25:54,972 INFO:   wrote 600000 concepts
+2026-10-06 09:26:23,788 INFO:   wrote 800000 concepts
+2026-10-06 09:27:14,722 INFO:   wrote 1000000 concepts
+2026-10-06 09:27:44,969 INFO:   wrote 1200000 concepts
+2026-10-06 09:28:16,836 INFO:   wrote 1400000 concepts
+2026-10-06 09:28:48,870 INFO:   wrote 1600000 concepts
+2026-10-06 09:29:23,166 INFO:   wrote 1800000 concepts
+2026-10-06 09:29:59,416 INFO:   wrote 2000000 concepts
+2026-10-06 09:30:48,971 INFO:   wrote 2200000 concepts
+2026-10-06 09:31:19,048 INFO:   wrote 2400000 concepts
+2026-10-06 09:31:43,038 INFO:   wrote 2600000 concepts
+2026-10-06 09:32:32,517 INFO:   wrote 2800000 concepts
+2026-10-06 09:32:57,564 INFO:   wrote 3000000 concepts
+2026-10-06 09:33:27,402 INFO:   wrote 3200000 concepts
+2026-10-06 09:33:50,226 INFO:   wrote 3400000 concepts
+2026-10-06 09:34:34,072 INFO:   wrote 3600000 concepts
+2026-10-06 09:35:13,387 INFO:   wrote 3800000 concepts
+2026-10-06 09:35:36,893 INFO:   wrote 4000000 concepts
+2026-10-06 09:36:06,641 INFO:   wrote 4200000 concepts
+2026-10-06 09:36:29,385 INFO:   wrote 4400000 concepts
+2026-10-06 09:37:01,356 INFO:   wrote 4600000 concepts
+2026-10-06 09:37:25,440 INFO:   wrote 4800000 concepts
+2026-10-06 09:37:32,659 INFO:   wrote 5000000 concepts
+2026-10-06 09:37:40,238 INFO:   wrote 5200000 concepts
+2026-10-06 09:37:47,491 INFO:   wrote 5400000 concepts
+2026-10-06 09:37:53,860 INFO:   wrote 5600000 concepts
+2026-10-06 09:38:00,426 INFO:   wrote 5800000 concepts
+2026-10-06 09:38:06,963 INFO:   wrote 6000000 concepts
+2026-10-06 09:38:13,610 INFO:   wrote 6200000 concepts
+2026-10-06 09:38:20,052 INFO:   wrote 6400000 concepts
+2026-10-06 09:38:26,076 INFO:   wrote 6600000 concepts
+2026-10-06 09:38:32,637 INFO:   wrote 6800000 concepts
+2026-10-06 09:38:38,955 INFO:   wrote 7000000 concepts
+2026-10-06 09:38:45,913 INFO:   wrote 7200000 concepts
+2026-10-06 09:38:52,556 INFO:   wrote 7400000 concepts
+2026-10-06 09:38:58,994 INFO:   wrote 7600000 concepts
+2026-10-06 09:39:04,728 INFO:   wrote 7800000 concepts
+2026-10-06 09:39:10,767 INFO:   wrote 8000000 concepts
+2026-10-06 09:39:16,735 INFO:   wrote 8200000 concepts
+2026-10-06 09:39:20,556 INFO: Done concept DB in 29.01 min (1650 files, 0 errors, 8281319 concepts)
+2026-10-06 09:39:20,585 INFO: Building curie_to_pmids...
+2026-10-06 09:39:20,585 INFO: Resolving concept names using local_babel (parallel)...
+2026-10-06 09:39:20,585 INFO: Resolver pool: 23 workers
+2026-10-06 09:39:21,818 INFO:   processed 100000 (rec 37027 / unrec 62973) | 81143 names/sec
+2026-10-06 09:39:22,257 INFO:   processed 200000 (rec 67821 / unrec 132179) | 119635 names/sec
+2026-10-06 09:39:40,417 INFO:   processed 300000 (rec 85561 / unrec 214439) | 15127 names/sec
+2026-10-06 09:40:27,160 INFO:   processed 400000 (rec 101322 / unrec 298678) | 6008 names/sec
+2026-10-06 09:40:30,829 INFO:   processed 500000 (rec 116564 / unrec 383436) | 7118 names/sec
+2026-10-06 09:40:35,363 INFO:   processed 600000 (rec 133425 / unrec 466575) | 8024 names/sec
+2026-10-06 09:40:39,081 INFO:   processed 700000 (rec 147218 / unrec 552782) | 8918 names/sec
+2026-10-06 09:40:39,797 INFO:   processed 800000 (rec 165918 / unrec 634082) | 10099 names/sec
+2026-10-06 09:40:43,888 INFO:   processed 900000 (rec 183027 / unrec 716973) | 10804 names/sec
+2026-10-06 09:40:48,582 INFO:   processed 1000000 (rec 198003 / unrec 801997) | 11364 names/sec
+2026-10-06 09:40:50,905 INFO:   processed 1100000 (rec 209282 / unrec 890718) | 12179 names/sec
+2026-10-06 09:40:53,220 INFO:   processed 1200000 (rec 226174 / unrec 973826) | 12954 names/sec
+2026-10-06 09:40:56,051 INFO:   processed 1300000 (rec 242037 / unrec 1057963) | 13617 names/sec
+2026-10-06 09:40:58,445 INFO:   processed 1400000 (rec 253916 / unrec 1146084) | 14306 names/sec
+2026-10-06 09:41:00,694 INFO:   processed 1500000 (rec 266632 / unrec 1233368) | 14984 names/sec
+2026-10-06 09:41:03,581 INFO:   processed 1600000 (rec 281980 / unrec 1318020) | 15535 names/sec
+2026-10-06 09:41:05,437 INFO:   processed 1700000 (rec 296100 / unrec 1403900) | 16213 names/sec
+2026-10-06 09:41:07,089 INFO:   processed 1800000 (rec 312107 / unrec 1487893) | 16901 names/sec
+2026-10-06 09:41:14,700 INFO:   processed 1900000 (rec 327149 / unrec 1572851) | 16650 names/sec
+2026-10-06 09:41:16,630 INFO:   processed 2000000 (rec 342343 / unrec 1657657) | 17235 names/sec
+2026-10-06 09:41:19,179 INFO:   processed 2100000 (rec 355528 / unrec 1744472) | 17708 names/sec
+2026-10-06 09:41:21,576 INFO:   processed 2200000 (rec 369507 / unrec 1830493) | 18183 names/sec
+2026-10-06 09:41:24,770 INFO:   processed 2300000 (rec 380033 / unrec 1919967) | 18521 names/sec
+2026-10-06 09:41:26,852 INFO:   processed 2400000 (rec 397375 / unrec 2002625) | 19007 names/sec
+2026-10-06 09:41:28,352 INFO:   processed 2500000 (rec 413746 / unrec 2086254) | 19567 names/sec
+2026-10-06 09:41:39,163 INFO:   processed 2600000 (rec 429013 / unrec 2170987) | 18762 names/sec
+2026-10-06 09:41:40,924 INFO:   processed 2700000 (rec 445222 / unrec 2254778) | 19239 names/sec
+2026-10-06 09:41:44,939 INFO:   processed 2800000 (rec 458728 / unrec 2341272) | 19397 names/sec
+2026-10-06 09:41:53,741 INFO:   processed 2900000 (rec 470686 / unrec 2429314) | 18935 names/sec
+2026-10-06 09:41:54,774 INFO:   processed 3000000 (rec 492786 / unrec 2507214) | 19457 names/sec
+2026-10-06 09:41:57,638 INFO:   processed 3100000 (rec 506022 / unrec 2593978) | 19739 names/sec
+2026-10-06 09:41:59,548 INFO:   processed 3200000 (rec 521242 / unrec 2678758) | 20130 names/sec
+2026-10-06 09:42:00,454 INFO:   processed 3300000 (rec 539171 / unrec 2760829) | 20642 names/sec
+2026-10-06 09:42:02,975 INFO:   processed 3400000 (rec 555189 / unrec 2844811) | 20937 names/sec
+2026-10-06 09:42:06,096 INFO:   processed 3500000 (rec 572320 / unrec 2927680) | 21147 names/sec
+2026-10-06 09:42:10,025 INFO:   processed 3600000 (rec 584289 / unrec 3015711) | 21247 names/sec
+2026-10-06 09:42:12,750 INFO:   processed 3700000 (rec 602447 / unrec 3097553) | 21491 names/sec
+2026-10-06 09:42:17,514 INFO:   processed 3800000 (rec 614584 / unrec 3185416) | 21478 names/sec
+2026-10-06 09:42:20,204 INFO:   processed 3900000 (rec 633119 / unrec 3266881) | 21713 names/sec
+2026-10-06 09:42:21,272 INFO:   processed 4000000 (rec 651705 / unrec 3348295) | 22138 names/sec
+2026-10-06 09:42:23,709 INFO:   processed 4100000 (rec 664566 / unrec 3435434) | 22389 names/sec
+2026-10-06 09:42:26,366 INFO:   processed 4200000 (rec 677646 / unrec 3522354) | 22607 names/sec
+2026-10-06 09:42:28,603 INFO:   processed 4300000 (rec 690127 / unrec 3609873) | 22870 names/sec
+2026-10-06 09:42:29,732 INFO:   processed 4400000 (rec 706914 / unrec 3693086) | 23262 names/sec
+2026-10-06 09:42:32,404 INFO:   processed 4500000 (rec 719996 / unrec 3780004) | 23460 names/sec
+2026-10-06 09:42:34,778 INFO:   processed 4600000 (rec 734745 / unrec 3865255) | 23688 names/sec
+2026-10-06 09:42:37,213 INFO:   processed 4700000 (rec 751246 / unrec 3948754) | 23903 names/sec
+2026-10-06 09:42:38,466 INFO:   processed 4800000 (rec 766736 / unrec 4033264) | 24257 names/sec
+2026-10-06 09:42:39,342 INFO:   processed 4900000 (rec 781238 / unrec 4118762) | 24653 names/sec
+2026-10-06 09:42:39,578 INFO:   processed 5000000 (rec 796388 / unrec 4203612) | 25127 names/sec
+2026-10-06 09:42:40,001 INFO:   processed 5100000 (rec 811141 / unrec 4288859) | 25575 names/sec
+2026-10-06 09:42:40,237 INFO:   processed 5200000 (rec 825791 / unrec 4374209) | 26045 names/sec
+2026-10-06 09:42:40,664 INFO:   processed 5300000 (rec 840344 / unrec 4459656) | 26490 names/sec
+2026-10-06 09:42:40,892 INFO:   processed 5400000 (rec 851775 / unrec 4548225) | 26959 names/sec
+2026-10-06 09:42:41,115 INFO:   processed 5500000 (rec 862405 / unrec 4637595) | 27427 names/sec
+2026-10-06 09:42:41,352 INFO:   processed 5600000 (rec 879245 / unrec 4720755) | 27893 names/sec
+2026-10-06 09:42:41,580 INFO:   processed 5700000 (rec 889978 / unrec 4810022) | 28359 names/sec
+2026-10-06 09:42:41,818 INFO:   processed 5800000 (rec 902372 / unrec 4897628) | 28822 names/sec
+2026-10-06 09:42:42,048 INFO:   processed 5900000 (rec 913759 / unrec 4986241) | 29286 names/sec
+2026-10-06 09:42:42,629 INFO:   processed 6000000 (rec 926091 / unrec 5073909) | 29696 names/sec
+2026-10-06 09:42:42,862 INFO:   processed 6100000 (rec 939706 / unrec 5160294) | 30157 names/sec
+2026-10-06 09:42:43,085 INFO:   processed 6200000 (rec 951684 / unrec 5248316) | 30617 names/sec
+2026-10-06 09:42:43,317 INFO:   processed 6300000 (rec 962555 / unrec 5337445) | 31076 names/sec
+2026-10-06 09:42:43,540 INFO:   processed 6400000 (rec 974082 / unrec 5425918) | 31534 names/sec
+2026-10-06 09:42:43,762 INFO:   processed 6500000 (rec 988385 / unrec 5511615) | 31992 names/sec
+2026-10-06 09:42:43,988 INFO:   processed 6600000 (rec 1000462 / unrec 5599538) | 32448 names/sec
+2026-10-06 09:42:44,228 INFO:   processed 6700000 (rec 1012895 / unrec 5687105) | 32901 names/sec
+2026-10-06 09:42:44,451 INFO:   processed 6800000 (rec 1021553 / unrec 5778447) | 33355 names/sec
+2026-10-06 09:42:44,687 INFO:   processed 6900000 (rec 1034479 / unrec 5865521) | 33807 names/sec
+2026-10-06 09:42:44,911 INFO:   processed 7000000 (rec 1044638 / unrec 5955362) | 34259 names/sec
+2026-10-06 09:42:45,147 INFO:   processed 7100000 (rec 1057411 / unrec 6042589) | 34708 names/sec
+2026-10-06 09:42:45,560 INFO:   processed 7200000 (rec 1070721 / unrec 6129279) | 35126 names/sec
+2026-10-06 09:42:45,785 INFO:   processed 7300000 (rec 1085329 / unrec 6214671) | 35575 names/sec
+2026-10-06 09:42:46,031 INFO:   processed 7400000 (rec 1097418 / unrec 6302582) | 36019 names/sec
+2026-10-06 09:42:46,260 INFO:   processed 7500000 (rec 1108130 / unrec 6391870) | 36465 names/sec
+2026-10-06 09:42:46,489 INFO:   processed 7600000 (rec 1120662 / unrec 6479338) | 36911 names/sec
+2026-10-06 09:42:46,714 INFO:   processed 7700000 (rec 1130885 / unrec 6569115) | 37355 names/sec
+2026-10-06 09:42:46,942 INFO:   processed 7800000 (rec 1141119 / unrec 6658881) | 37799 names/sec
+2026-10-06 09:42:47,171 INFO:   processed 7900000 (rec 1151213 / unrec 6748787) | 38241 names/sec
+2026-10-06 09:42:47,404 INFO:   processed 8000000 (rec 1163768 / unrec 6836232) | 38681 names/sec
+2026-10-06 09:42:47,636 INFO:   processed 8100000 (rec 1176984 / unrec 6923016) | 39121 names/sec
+2026-10-06 09:42:47,863 INFO:   processed 8200000 (rec 1189230 / unrec 7010770) | 39561 names/sec
+2026-10-06 09:42:53,738 INFO: Recognized: 1198338, Unrecognized: 7082981 (unique: 7082981), Errors: 0
+2026-10-06 09:42:54,250 INFO: Harvesting PMIDs from tier 0 edges: /home/hodgesf/Desktop/code/large_files/translator_kg/20260928/edges.jsonl
+2026-10-06 09:43:04,944 INFO:   scanned 7000000 edges (1616835 with pubs, 3664280 rows added) | 654565 edges/sec
+2026-10-06 09:43:13,019 INFO:   scanned 11000000 edges (3550395 with pubs, 8192456 rows added) | 586088 edges/sec
+2026-10-06 09:43:20,936 INFO:   scanned 15000000 edges (4509327 with pubs, 10683734 rows added) | 562106 edges/sec
+2026-10-06 09:43:22,980 INFO:   scanned 17000000 edges (4936989 with pubs, 11951620 rows added) | 591719 edges/sec
+2026-10-06 09:43:50,108 INFO:   scanned 18000000 edges (5936989 with pubs, 37040246 rows added) | 322250 edges/sec
+2026-10-06 09:44:08,864 INFO: Tier 0 harvest: scanned 30506132 edges, 6562127 had PMIDs, 44891398 (curie, pmid) rows added in 1.24 min
+2026-10-06 09:44:08,864 INFO: Indexing staging table...
+2026-10-06 09:45:39,867 INFO: Aggregating curie -> pmids...
+2026-10-06 09:48:46,146 INFO: Done curie DB in 9.43 min (1268342 curies)

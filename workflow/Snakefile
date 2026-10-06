@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -112,6 +113,15 @@ ARTIFACT_TEST_RESULTS = TEST_RESULTS_DIR / "artifacts.xml"
 CONFIG_DBS_TEST_RESULTS = TEST_RESULTS_DIR / "config_dbs.xml"
 ARTIFACT_STATS = BUILD_DIR / "artifact_stats.json"
 BUILD_REPORT = BUILD_DIR / "build_report.md"
+# Each build's report, counts, logs and test results are kept in the repo,
+# under builds/YYYYMMDD/ like the artifacts, so they outlive the artifacts.
+RECORDS_ROOT = Path(workflow.basedir).parent / "builds"
+BUILD_RECORD = RECORDS_ROOT / VERSION / "build_report.md"
+
+STAGING = config.get("staging", {})
+STAGING_TARGETS = STAGING.get("targets", {})
+ARAX_DATABASES = STAGING_TARGETS["arax_databases"]
+STAGE_RESULTS = [BUILD_DIR / "staged" / f"{target}.json" for target in STAGING_TARGETS]
 RTX_PR_RESULT = BUILD_DIR / "rtx_pr.json"
 RTX_PR = config.get("rtx_pr", {})
 
@@ -138,7 +148,9 @@ rule all:
         [MD5_DIR / f"{artifact.name}.md5" for artifact in RELEASE_ARTIFACTS],
         CONFIG_DBS,
         BUILD_REPORT,
+        STAGE_RESULTS if STAGING.get("enabled") else [],
         [RTX_PR_RESULT] if RTX_PR.get("enabled") else [],
+        BUILD_RECORD,
 
 
 include: "rules/sources.smk"
@@ -150,4 +162,6 @@ include: "rules/fda_drugs.smk"
 include: "rules/md5.smk"
 include: "rules/arax_config.smk"
 include: "rules/report.smk"
+include: "rules/stage.smk"
 include: "rules/rtx_pr.smk"
+include: "rules/record.smk"

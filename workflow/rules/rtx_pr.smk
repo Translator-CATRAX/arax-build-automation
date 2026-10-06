@@ -1,6 +1,7 @@
-# Open a PR to RTX with this build's config_dbs.json, once every test has passed
-# and the report is written. See rtx_pr in config.yaml; with push: false this
-# is a dry run. Run it on its own with `snakemake rtx_config_pr`.
+# Open a PR to RTX with this build's config_dbs.json, once every test has passed,
+# the report is written and, when staging is enabled, the artifacts are staged.
+# See rtx_pr in config.yaml; with push: false this is a dry run. Run it on its
+# own with `snakemake rtx_config_pr`.
 rule rtx_config_pr:
     input:
         script=SCRIPTS / "arax" / "open_config_pr.py",
@@ -9,6 +10,7 @@ rule rtx_config_pr:
         artifact_tests=ARTIFACT_TEST_RESULTS,
         report=BUILD_REPORT,
         md5s=[MD5_DIR / f"{artifact.name}.md5" for artifact in RELEASE_ARTIFACTS],
+        staged=STAGE_RESULTS if STAGING.get("enabled") else [],
     output:
         RTX_PR_RESULT,
     params:
@@ -17,8 +19,8 @@ rule rtx_config_pr:
         remote=RTX_PR.get("remote"),
         base=RTX_PR.get("base", "master"),
         branch_prefix=RTX_PR.get("branch_prefix", "autobuild/"),
-        staged_host=RTX_PR.get("staged_host"),
-        staged_dir=str(RTX_PR.get("staged_dir", "")).format(version=VERSION),
+        staged_host=ARAX_DATABASES.get("host"),
+        staged_dir=f"{ARAX_DATABASES.get('root', '').rstrip('/')}/{TIER0}",
     log:
         artifact_log(RTX_PR_RESULT),
     shell:
