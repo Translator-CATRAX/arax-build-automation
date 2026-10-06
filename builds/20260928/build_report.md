@@ -49,4 +49,4 @@ Compared with the previous build, 20260621.
 - Staged on `arax_databases`: `/home/rtxconfig/tier0-20260928` (uploaded and verified)
 - Staged on `arax_ncats`: `/translator/data/orangeboard/databases/tier0-20260928` (uploaded and verified)
 - Staged on `cicd`: `/mnt/data/orangeboard/databases/tier0-20260928` (uploaded and verified)
-- RTX PR: dry run only, branch `autobuild/tier0-20260928` not pushed
+- RTX PR: https://github.com/RTXteam/RTX/pull/2905 (branch `autobuild/tier0-20260928`)
