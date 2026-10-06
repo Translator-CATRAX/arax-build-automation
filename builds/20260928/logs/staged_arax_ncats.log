@@ -1,0 +1,4 @@
+5 artifacts match their md5s; staging to arax:/translator/data/orangeboard/databases/tier0-20260928
+`sudo -n docker exec rtx2 sudo -u rt` works on arax
+No rsync on arax; copying with scp
+Staged 5 artifacts in arax:/translator/data/orangeboard/databases/tier0-20260928

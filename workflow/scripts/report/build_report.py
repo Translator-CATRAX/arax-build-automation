@@ -77,6 +77,18 @@ def size(n_bytes: int) -> str:
     raise AssertionError
 
 
+def artifact_name(path: Path) -> str:
+    """An artifact's name without its version, graph and extension, e.g.
+    autocomplete_v1.0_tier0-20260928.sqlite -> autocomplete."""
+    match = re.match(r"(.+?)_v\d", path.name)
+    return match[1] if match else path.name.split(".")[0]
+
+
+def metadata_value(metadata: dict, name: str) -> str:
+    """A graph-metadata.json value; newer files prefix keys with translator:."""
+    return str(metadata.get(f"translator:{name}") or metadata.get(name) or "unknown")
+
+
 def change(old: int | None, new: int) -> tuple[str, str]:
     """(absolute change, percent change) as table cells."""
     if old is None:
@@ -97,11 +109,9 @@ def main() -> None:
     parser.add_argument("--config-dbs", type=Path, required=True)
     parser.add_argument("--test-results", type=Path, action="append", required=True,
                         help="pytest JUnit XML; repeat for each test step.")
-    parser.add_argument("--graph-dir", type=Path, required=True)
+    parser.add_argument("--graph-metadata", type=Path, required=True,
+                        help="The graph's graph-metadata.json.")
     parser.add_argument("--pubmed-manifest", type=Path, required=True)
-    parser.add_argument("--drugbank", type=Path, required=True)
-    parser.add_argument("--babel", type=Path, required=True)
-    parser.add_argument("--biolink-version", required=True)
     parser.add_argument("--stats-output", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -125,6 +135,7 @@ def main() -> None:
     tests = {key: sum(read_tests(path)[key] for path in args.test_results)
              for key in ("tests", "failures", "errors", "skipped", "time")}
     pubmed = json.loads(args.pubmed_manifest.read_text())
+    graph = json.loads(args.graph_metadata.read_text())
 
     lines = [
         f"# ARAX database build {build_dir.name}",
@@ -133,13 +144,11 @@ def main() -> None:
         "",
         "## Inputs",
         "",
-        f"- Tier0 graph: `{args.graph_dir}`",
-        f"- PubMed: {pubmed['baseline_release']} baseline, {pubmed['baseline']['files']:,}"
-        f" baseline + {pubmed['updatefiles']['files']:,} update files"
-        f" (mirrored {pubmed['finished_at'][:10]})",
-        f"- DrugBank: `{args.drugbank.name}`",
-        f"- Babel: `{args.babel.name}`",
-        f"- Biolink model: {args.biolink_version}",
+        f"- Tier0 graph: {metadata_value(graph, 'version')}"
+        f" {metadata_value(graph, 'dateCreated')[:10]}",
+        f"- PubMed: {pubmed['baseline_release']}",
+        f"- Babel: {metadata_value(graph, 'babelVersion')}",
+        f"- Biolink model: {metadata_value(graph, 'biolinkVersion')}",
         "",
         "## Run",
         "",
@@ -160,20 +169,16 @@ def main() -> None:
         "",
         "Step time and peak memory (PSS) are for the rule that built the artifact.",
         "",
-        "| Artifact | Size | MD5 | Step time | Peak memory | Built | Log |",
-        "|---|---:|---|---:|---:|---|---|",
+        "| Artifact | Size | Step time | Peak memory | Built |",
+        "|---|---:|---:|---:|---|",
     ]
     for path in [*artifacts.values(), args.config_dbs]:
-        md5_file = build_dir / "md5_sums" / f"{path.name}.md5"
-        md5 = f"`{md5_file.read_text().split()[0]}`" if md5_file.exists() else "—"
         bench = read_benchmark(build_dir / "benchmarks" / f"{path.name}.tsv")
-        log = build_dir / "logs" / f"{path.name}.log"
         lines.append(
-            f"| `{path.name}` | {size(path.stat().st_size)} | {md5} "
+            f"| {artifact_name(path)} | {size(path.stat().st_size)} "
             f"| {duration(bench['seconds']) if bench else ''} "
             f"| {f'{bench['max_pss_mb'] / 1024:.1f} GB' if bench else ''} "
-            f"| {f'{bench['finished'].astimezone():%Y-%m-%d %H:%M}' if bench else ''} "
-            f"| `logs/{log.name}` |")
+            f"| {f'{bench['finished'].astimezone():%Y-%m-%d %H:%M}' if bench else ''} |")
 
     lines += ["", "## Counts", ""]
     if previous_dir:
@@ -187,7 +192,8 @@ def main() -> None:
         for metric, new in counts.items():
             old = previous.get(kind, {}).get(metric)
             diff, pct = change(old, new)
-            lines.append(f"| {kind} | {metric} | {'' if old is None else f'{old:,}'} "
+            lines.append(f"| {artifact_name(artifacts[kind])} | {metric}"
+                         f" | {'' if old is None else f'{old:,}'} "
                          f"| {new:,} | {diff} | {pct} |")
 
     args.output.write_text("\n".join(lines) + "\n")

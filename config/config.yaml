@@ -51,7 +51,9 @@ staging:
       sudo: true
       dir_mode: "777"
     arax_ncats:
-      host: hodgesf@10.13.5.17        # arax.ncats.io; reachable only from the NCATS network or VPN
+      # arax.ncats.io (10.13.5.17) is reached through a jump host, so this is an
+      # ~/.ssh/config alias that sets the user, key and ProxyCommand.
+      host: arax
       root: /translator/data/orangeboard/databases
       dir_mode: "777"
       # The rtx2 container mounts /translator/data at the same path and runs ARAX as rt.
@@ -71,3 +73,15 @@ rtx_pr:
   remote: git@github.com:RTXTeam/RTX
   base: master
   branch_prefix: autobuild/
+
+# Commit this build's record (builds/YYYYMMDD/: report, counts, logs, test
+# results) and push it straight to the autobuild repo's branch. Runs last, and
+# only after the build was staged and its RTX PR opened for real; the commit
+# holds nothing but the record, and the push is never forced.
+#   enabled: run this step as part of a normal build
+#   push:    false = dry run (report what would be committed; change nothing)
+build_record:
+  enabled: false
+  push: false
+  remote: origin
+  branch: master

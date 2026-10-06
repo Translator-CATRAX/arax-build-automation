@@ -117,6 +117,8 @@ BUILD_REPORT = BUILD_DIR / "build_report.md"
 # under builds/YYYYMMDD/ like the artifacts, so they outlive the artifacts.
 RECORDS_ROOT = Path(workflow.basedir).parent / "builds"
 BUILD_RECORD = RECORDS_ROOT / VERSION / "build_report.md"
+RECORD_PUSH_RESULT = BUILD_DIR / "record_pushed.json"
+RECORD_PUSH = config.get("build_record", {})
 
 STAGING = config.get("staging", {})
 STAGING_TARGETS = STAGING.get("targets", {})
@@ -151,6 +153,7 @@ rule all:
         STAGE_RESULTS if STAGING.get("enabled") else [],
         [RTX_PR_RESULT] if RTX_PR.get("enabled") else [],
         BUILD_RECORD,
+        [RECORD_PUSH_RESULT] if RECORD_PUSH.get("enabled") else [],
 
 
 include: "rules/sources.smk"

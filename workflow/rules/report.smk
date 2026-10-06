@@ -57,8 +57,7 @@ rule report:
         artifact_tests=ARTIFACT_TEST_RESULTS,
         config_dbs_tests=CONFIG_DBS_TEST_RESULTS,
         pubmed_manifest=PUBMED_MANIFEST,
-        drugbank=DRUGBANK_XML,
-        babel=BABEL_SQLITE,
+        graph_metadata=GRAPH_METADATA,
     output:
         report=BUILD_REPORT,
         stats=ARTIFACT_STATS,
@@ -72,8 +71,6 @@ rule report:
         f" --artifact curie_ngd={CURIE_NGD_DB}"
         f" --artifact fda_approved_drugs={FDA_DRUGS_PICKLE}"
         " --config-dbs {input.config_dbs} --test-results {input.artifact_tests}"
-        " --test-results {input.config_dbs_tests} --graph-dir {KGX_DIR}"
-        " --pubmed-manifest {input.pubmed_manifest} --drugbank {input.drugbank}"
-        " --babel {input.babel} --biolink-version {BIOLINK_VERSION}"
-        " --stats-output {output.stats} --output {output.report}"
+        " --test-results {input.config_dbs_tests} --graph-metadata {input.graph_metadata}"
+        " --pubmed-manifest {input.pubmed_manifest} --stats-output {output.stats} --output {output.report}"
         " > {log} 2>&1"

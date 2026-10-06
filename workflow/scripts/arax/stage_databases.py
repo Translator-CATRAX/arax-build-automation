@@ -135,9 +135,15 @@ def main() -> None:
         quoted = shlex.quote(staging_dir)
         ssh(args.host, f"{sudo}mkdir -p {quoted} && {sudo}chown \"$(id -u):$(id -g)\" {quoted}"
                        f" && chmod {shlex.quote(args.dir_mode)} {quoted}")
-        run("rsync", "--partial", "--times", "--chmod=F644", "-e",
-            "ssh -o BatchMode=yes -o ConnectTimeout=15",
-            *map(str, files), f"{args.host}:{staging_dir}/")
+        ssh_options = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
+        if ssh(args.host, "command -v rsync || true").strip():
+            run("rsync", "--partial", "--times", "--chmod=F644", "-e", shlex.join(["ssh", *ssh_options]),
+                *map(str, files), f"{args.host}:{staging_dir}/")
+        else:
+            # Without rsync on the server, scp: an interrupted file starts over.
+            print(f"No rsync on {args.host}; copying with scp")
+            run("scp", "-p", "-q", *ssh_options, *map(str, files), f"{args.host}:{staging_dir}/")
+            ssh(args.host, "chmod 644 " + " ".join(shlex.quote(f"{staging_dir}/{f.name}") for f in files))
         uploaded = remote_md5s(args.host, staging_dir, list(expected))
         if uploaded != expected:
             raise Stop(f"md5 mismatch after upload in {staging_dir}: "
