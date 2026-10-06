@@ -11,7 +11,7 @@ rule stage_target:
     output:
         BUILD_DIR / "staged" / "{target}.json",
     wildcard_constraints:
-        target="|".join(STAGING_TARGETS),
+        target="|".join(SSH_TARGETS),
     params:
         upload="--upload" if STAGING.get("upload") else "",
         host=lambda wildcards: STAGING_TARGETS[wildcards.target]["host"],
@@ -27,6 +27,34 @@ rule stage_target:
         " --dir-mode {params.dir_mode} {params.sudo} --read-check {params.read_check}"
         " {params.upload}"
         " --result {output} > {log} 2>&1"
+
+
+# Upload the tested artifacts and their md5 files to an SFTP-only target (the
+# ITRB drop). See stage_sftp.py; with upload: false this is a dry run.
+if SFTP_TARGETS:
+    rule stage_sftp:
+        input:
+            script=SCRIPTS / "arax" / "stage_sftp.py",
+            artifacts=RELEASE_ARTIFACTS,
+            md5s=[MD5_DIR / f"{artifact.name}.md5" for artifact in RELEASE_ARTIFACTS],
+            artifact_tests=ARTIFACT_TEST_RESULTS,
+            config_dbs_tests=CONFIG_DBS_TEST_RESULTS,
+        output:
+            BUILD_DIR / "staged" / "{target}.json",
+        wildcard_constraints:
+            target="|".join(SFTP_TARGETS),
+        params:
+            upload="--upload" if STAGING.get("upload") else "",
+            host=lambda wildcards: STAGING_TARGETS[wildcards.target]["host"],
+            databases=lambda wildcards: STAGING_TARGETS[wildcards.target].get("databases", "databases"),
+            md5_sums=lambda wildcards: STAGING_TARGETS[wildcards.target].get("md5_sums", "md5_sums"),
+        log:
+            LOG_DIR / "staged_{target}.log",
+        shell:
+            "python {input.script} --build-dir {BUILD_DIR} --md5-dir {MD5_DIR}"
+            " --release {TIER0} --host {params.host} --databases {params.databases}"
+            " --md5-sums {params.md5_sums} {params.upload}"
+            " --result {output} > {log} 2>&1"
 
 
 rule stage:

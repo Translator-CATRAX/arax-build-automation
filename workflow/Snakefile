@@ -3,7 +3,6 @@ import os
 import re
 import shlex
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # Rules run their scripts with bare `python`; make that the interpreter running
@@ -15,6 +14,7 @@ OUTPUT_ROOT = Path(config["output_root"])
 SCRIPTS = Path(workflow.basedir) / "scripts"
 
 sys.path.insert(0, str(SCRIPTS / "sources"))
+import babel
 import webhost
 
 # The Tier0 graph is placed by hand under {graph_root}/YYYYMMDD/ (the graph's
@@ -57,19 +57,13 @@ def graph_metadata_version(name: str) -> str:
 
 BIOLINK_VERSION = graph_metadata_version("biolinkVersion")
 
-# Babel versions are recorded like "2026jul22"; the sqlite for that release is
-# babel-20260722.sqlite in babel_dir, placed there by hand.
+# Babel: the sqlite built from the graph's babelVersion, at the highest patch
+# released for it on stitch-proj. A local copy of that patch in babel_dir is
+# used; otherwise the fetch rule downloads it.
 BABEL_VERSION = graph_metadata_version("babelVersion")
-try:
-    _babel_date = datetime.strptime(BABEL_VERSION, "%Y%b%d").strftime("%Y%m%d")
-except ValueError:
-    raise ValueError(f"Unrecognized babelVersion {BABEL_VERSION!r} in {GRAPH_METADATA}; "
-                     "expected the form 2026jul22") from None
-BABEL_SQLITE = Path(config["babel_dir"]) / f"babel-{_babel_date}.sqlite"
-if not BABEL_SQLITE.exists():
-    raise ValueError(f"The graph was built with Babel {BABEL_VERSION}, but {BABEL_SQLITE} "
-                     "does not exist. Place that Babel sqlite there and rerun.")
-print(f"Biolink: {BIOLINK_VERSION}; Babel: {BABEL_VERSION} ({BABEL_SQLITE})", file=sys.stderr)
+BABEL_SQLITE, BABEL_RELEASE = babel.resolve(
+    Path(config["babel_dir"]), BABEL_VERSION, config["babel_releases"])
+print(f"Biolink: {BIOLINK_VERSION}", file=sys.stderr)
 
 # DrugBank: the newest of what is local and what is on the webhost (or a
 # version pinned in the config). Only the listing is fetched here; the fetch
@@ -124,6 +118,10 @@ STAGING = config.get("staging", {})
 STAGING_TARGETS = STAGING.get("targets", {})
 ARAX_DATABASES = STAGING_TARGETS["arax_databases"]
 STAGE_RESULTS = [BUILD_DIR / "staged" / f"{target}.json" for target in STAGING_TARGETS]
+# Targets reached over ssh, and SFTP-only ones (the ITRB drop), staged by
+# different rules.
+SSH_TARGETS = [t for t, target in STAGING_TARGETS.items() if not target.get("sftp")]
+SFTP_TARGETS = [t for t, target in STAGING_TARGETS.items() if target.get("sftp")]
 RTX_PR_RESULT = BUILD_DIR / "rtx_pr.json"
 RTX_PR = config.get("rtx_pr", {})
 

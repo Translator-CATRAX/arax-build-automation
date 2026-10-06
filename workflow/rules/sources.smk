@@ -18,3 +18,20 @@ rule fetch_drugbank:
     shell:
         "python {params.script} --host {params.host} --remote {params.remote}"
         " --version {params.version} --dest {output} > {log} 2>&1"
+
+
+# Download the Babel sqlite from its stitch-proj release. This runs only when
+# no local sqlite matches the graph's babelVersion (see the Snakefile).
+if BABEL_RELEASE:
+    rule fetch_babel:
+        output:
+            protected(BABEL_SQLITE),
+        params:
+            script=SCRIPTS / "sources" / "babel.py",
+            url=BABEL_RELEASE.url,
+            md5=BABEL_RELEASE.md5,
+        log:
+            LOG_DIR / "fetch_babel.log",
+        shell:
+            "python {params.script} --url {params.url} --md5 {params.md5}"
+            " --dest {output} > {log} 2>&1"

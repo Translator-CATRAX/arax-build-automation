@@ -109,7 +109,8 @@ def main() -> None:
                 if args.read_check:
                     check_readable(args.host, args.read_check, release_dir, list(expected))
                 print(f"{release_dir} already holds exactly these files; nothing to upload")
-                args.result.write_text(json.dumps({"staged": release_dir, "uploaded": False}) + "\n")
+                args.result.write_text(json.dumps({"staged": True, "location": release_dir,
+                                                   "already_staged": True}) + "\n")
                 return
             raise Stop(f"{release_dir} already exists with different or missing files; "
                        "it is never overwritten")
@@ -127,7 +128,8 @@ def main() -> None:
         if not args.upload:
             print(f"DRY RUN: would upload {needed / 1024**3:.1f} GB to {staging_dir}, verify "
                   f"md5s there, and rename it to {release_dir}. Nothing uploaded.")
-            args.result.write_text(json.dumps({"dry_run": True, "staged": release_dir}) + "\n")
+            args.result.write_text(json.dumps({"staged": False, "dry_run": True,
+                                               "location": release_dir}) + "\n")
             return
 
         # A staging directory left by an interrupted run is resumed, not restarted.
@@ -156,7 +158,8 @@ def main() -> None:
         if args.read_check:
             check_readable(args.host, args.read_check, release_dir, list(expected))
         print(f"Staged {len(files)} artifacts in {args.host}:{release_dir}")
-        args.result.write_text(json.dumps({"staged": release_dir, "uploaded": True}) + "\n")
+        args.result.write_text(json.dumps({"staged": True, "location": release_dir,
+                                           "already_staged": False}) + "\n")
     except Stop as stop:
         print(f"STOPPED: {stop}", file=sys.stderr)
         raise SystemExit(1)

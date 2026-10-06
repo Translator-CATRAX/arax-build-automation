@@ -23,13 +23,13 @@ def release_section(build_dir: Path) -> list[str]:
     staged = sorted((build_dir / "staged").glob("*.json"))
     for path in staged:
         result = json.loads(path.read_text())
-        if result.get("dry_run"):
-            state = "dry run only, nothing uploaded"
-        elif result.get("uploaded"):
-            state = "uploaded and verified"
+        if result.get("dry_run") or not result.get("staged"):
+            state = "not staged: dry run only, nothing uploaded"
+        elif result.get("already_staged"):
+            state = "staged; already staged before this run, verified, nothing uploaded"
         else:
-            state = "already staged, verified"
-        lines.append(f"- Staged on `{path.stem}`: `{result.get('staged')}` ({state})")
+            state = "staged; uploaded and verified"
+        lines.append(f"- `{path.stem}`: `{result.get('location')}` ({state})")
     if not staged:
         lines.append("- Not staged by the pipeline")
     pr_path = build_dir / "rtx_pr.json"

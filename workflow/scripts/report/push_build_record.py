@@ -42,7 +42,7 @@ def check_released(staged: list[Path], pr: Path) -> str:
         raise Stop("No staging results")
     for path in staged:
         result = json.loads(path.read_text())
-        if result.get("dry_run"):
+        if result.get("dry_run") or result.get("staged") is not True:
             raise Stop(f"Staging on {path.stem} was a dry run")
     result = json.loads(pr.read_text())
     if result.get("dry_run") or not result.get("url"):

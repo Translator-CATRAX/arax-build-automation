@@ -1,8 +1,0 @@
-tier0_sqlite: /translator/data/orangeboard/databases/tier0-20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite -> /translator/data/orangeboard/databases/tier0-20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite
-kg2c_sqlite: /translator/data/orangeboard/databases/tier0-20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite -> /translator/data/orangeboard/databases/tier0-20260928/tier0-info-for-overlay_v1.0_tier0-20260928.sqlite
-autocomplete: /translator/data/orangeboard/databases/tier0-20260928/autocomplete_v1.0_tier0-20260928.sqlite -> /translator/data/orangeboard/databases/tier0-20260928/autocomplete_v1.0_tier0-20260928.sqlite
-curie_to_pmids: /translator/data/orangeboard/databases/tier0-20260928/curie_to_pmids_v1.0_tier0-20260928.sqlite -> /translator/data/orangeboard/databases/tier0-20260928/curie_to_pmids_v1.0_tier0-20260928.sqlite
-curie_ngd: /translator/data/orangeboard/databases/tier0-20260928/curie_ngd_v1.0_tier0-20260928.sqlite -> /translator/data/orangeboard/databases/tier0-20260928/curie_ngd_v1.0_tier0-20260928.sqlite
-fda_approved_drugs: /translator/data/orangeboard/databases/tier0-20260928/fda_approved_drugs_v1.0.pickle -> /translator/data/orangeboard/databases/tier0-20260928/fda_approved_drugs_v1.0.pickle
-cohd_database: unchanged (/translator/data/orangeboard/databases/KG2.8.0/COHDdatabase_v1.0_KG2.8.0.db)
-explainable_dtd_db: unchanged (/translator/data/orangeboard/databases/tier0-20260621/ExplainableDTD_v1.0_tier0-20260621-all_with_paths.db)

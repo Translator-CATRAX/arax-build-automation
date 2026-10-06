@@ -1,7 +1,11 @@
-# Babel sqlite files, named babel-YYYYMMDD.sqlite. The build uses the release
-# the graph was built with (translator:babelVersion in its graph-metadata.json)
-# and stops if that file is not here. Biolink likewise follows the graph.
+# Babel sqlite files, named babel-YYYYMMDD[-pN].sqlite. The build uses the
+# release the graph was built with (translator:babelVersion in its
+# graph-metadata.json), at the highest patch the babel_releases GitHub repo has
+# released for it. When that patch is not here, it downloads the sqlite
+# (~200 GiB) and checks it against the release's MD5.
+# Biolink likewise follows the graph.
 babel_dir: /home/hodgesf/Desktop/code/large_files
+babel_releases: Translator-CATRAX/stitch-proj
 pubmed_dir: /home/hodgesf/Desktop/code/large_files/pubmed
 
 # Tier0 graph, placed by hand as {graph_root}/YYYYMMDD/{nodes.jsonl,edges.jsonl,graph-metadata.json}
@@ -18,7 +22,7 @@ output_root: /home/hodgesf/Desktop/code/database
 webhost: ubuntu@kg2webhost.rtx.ai
 webhost_drugbank: /home/ubuntu/drugbank.xml      # private: DrugBank is not redistributable
 drugbank_dir: /home/hodgesf/Desktop/code/large_files/drugbank
-# drugbank_version: "2023-01-04"
+drugbank_version: "2023-01-04"
 
 # ARAX config_dbs.json: the build writes an updated copy of this file to
 # {output_root}/YYYYMMDD/config_dbs.json, pointing the artifacts this pipeline
@@ -27,10 +31,12 @@ rtx_config_dbs: /home/hodgesf/Desktop/code/RTX/code/config_dbs.json
 arax_db_root: /translator/data/orangeboard/databases
 
 # Stage the tested artifacts in {root}/tier0-YYYYMMDD/ on each target: the ARAX
-# database server that ARAX_database_manager.py downloads from, and the hosts
-# that keep their own copies. Files are uploaded into a hidden staging
-# directory and renamed into place once their md5s check out. An existing
-# release directory is never overwritten and nothing is deleted.
+# database server that ARAX_database_manager.py downloads from, the hosts
+# that keep their own copies, and the ITRB SFTP drop (sftp: true, below).
+# Every target is staged before the RTX PR is opened. On the ssh targets, files
+# are uploaded into a hidden staging directory and renamed into place once
+# their md5s check out. An existing release directory is never overwritten and
+# nothing is deleted.
 #   enabled:  run this step as part of a normal build
 #   upload:   false = dry run (check and report; upload nothing)
 #   sudo:     create and rename the release directory with sudo
@@ -38,8 +44,8 @@ arax_db_root: /translator/data/orangeboard/databases
 #   read_check: command prefix that runs as the user ARAX reads the files as;
 #               the step fails unless that user can read every staged file
 staging:
-  enabled: false
-  upload: false
+  enabled: true
+  upload: true
   targets:
     arax_databases:
       host: rtxconfig@arax-databases.rtx.ai
@@ -58,6 +64,15 @@ staging:
       dir_mode: "777"
       # The rtx2 container mounts /translator/data at the same path and runs ARAX as rt.
       read_check: sudo -n docker exec rtx2 sudo -u rt
+    itrb_sftp:
+      # The ITRB SFTP drop (S3 behind it, no shell). ITRB takes releases from
+      # here once the build's RTX PR is merged into master. Artifacts go to
+      # {databases}/tier0-YYYYMMDD/ and their md5 files, last, to
+      # {md5_sums}/tier0-YYYYMMDD/. Checked by size; never overwritten.
+      sftp: true
+      host: team-expander-hodgesf@sftp.transltr.io
+      databases: databases
+      md5_sums: md5_sums
 
 # Propose the tested config_dbs.json to RTX as a pull request. Each build gets a
 # new branch {branch_prefix}tier0-YYYYMMDD made from the head of base; only that
@@ -67,8 +82,8 @@ staging:
 #   enabled: run this step as part of a normal build
 #   push:    false = dry run (clone and show the change and the PR; commit and push nothing)
 rtx_pr:
-  enabled: false
-  push: false
+  enabled: true
+  push: true
   repo: RTXTeam/RTX
   remote: git@github.com:RTXTeam/RTX
   base: master
@@ -81,7 +96,7 @@ rtx_pr:
 #   enabled: run this step as part of a normal build
 #   push:    false = dry run (report what would be committed; change nothing)
 build_record:
-  enabled: false
-  push: false
+  enabled: true
+  push: true
   remote: origin
   branch: master
