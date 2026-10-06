@@ -27,9 +27,9 @@ import argparse
 import json
 import logging
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from biolink_helper_pkg import BiolinkHelper
 
@@ -91,27 +91,42 @@ def _encode_publications(value: Any) -> str:
 
 def _iter_edge_publication_rows(
     edges_path: Path,
-    expanded_labels_by_node: Dict[str, List[str]],
-    neighbors_by_label: Dict[str, Dict[str, Set[str]]],
+    node_index: Dict[str, int],
+    labeled: List[bool],
+    neighbors: Dict[int, Set[int]],
     progress_every: int = 1_000_000,
 ) -> Iterable[tuple]:
     """
     Yield `(arax_edge_key, publications_str)` rows for edges that have at
-    least one publication. As a side effect, populate `neighbors_by_label`
-    with `[node_id][expanded_label] -> set(neighbor_ids)` so the caller
-    can collapse it into the `neighbors` table after this pass finishes.
+    least one publication. As a side effect, populate `neighbors` with
+    `node -> set(neighbors that have at least one category)`, both as
+    integer node indexes, so the caller can count neighbors per category
+    after this pass finishes. Storing each neighbor once (not once per
+    category) is what keeps this pass's memory down.
+
+    Edge endpoints missing from the nodes file get a new index on the fly;
+    they have no categories, so they are never counted as anyone's neighbor.
     """
+    def index_of(node_id: str) -> int:
+        index = node_index.get(node_id)
+        if index is None:
+            index = node_index[node_id] = len(labeled)
+            labeled.append(False)
+        return index
+
     with edges_path.open() as f:
         for index, line in enumerate(f, start=1):
             edge = json.loads(line)
 
             subject_id = edge["subject"]
             object_id = edge["object"]
+            subject_index = index_of(subject_id)
+            object_index = index_of(object_id)
 
-            for label in expanded_labels_by_node.get(object_id, ()):
-                neighbors_by_label[subject_id][label].add(object_id)
-            for label in expanded_labels_by_node.get(subject_id, ()):
-                neighbors_by_label[object_id][label].add(subject_id)
+            if labeled[object_index]:
+                neighbors[subject_index].add(object_index)
+            if labeled[subject_index]:
+                neighbors[object_index].add(subject_index)
 
             publications = _encode_publications(edge.get("publications"))
             if not publications:
@@ -136,15 +151,16 @@ def _iter_edge_publication_rows(
 
 
 # ---------------------------------------------------------------------
-# JSONL loader (nodes only — kept in memory for category expansion)
+# Node loader (categories only — the rest of each node is not needed)
 # ---------------------------------------------------------------------
 
-def _load_jsonl_as_dict(path: Path, key_field: str) -> Dict[str, Dict[str, Any]]:
-    result: Dict[str, Dict[str, Any]] = {}
+def _load_node_categories(path: Path) -> Dict[str, Tuple[str, ...]]:
+    result: Dict[str, Tuple[str, ...]] = {}
     with path.open() as f:
         for line in f:
-            obj = json.loads(line)
-            result[obj[key_field]] = obj
+            node = json.loads(line)
+            category = node.get("category") or ()
+            result[node["id"]] = tuple(category) if isinstance(category, list) else (category,)
     return result
 
 
@@ -173,23 +189,36 @@ def create_tier0_overlay_sqlite_db(
     # parent category like biolink:ChemicalEntity still resolve.
     # -------------------------
 
-    logging.info("Loading nodes into memory...")
-    nodes_dict = _load_jsonl_as_dict(nodes_path, "id")
-    logging.info("Loaded %s nodes", f"{len(nodes_dict):,}")
+    logging.info("Loading node categories...")
+    categories_by_node = _load_node_categories(nodes_path)
+    n_nodes = len(categories_by_node)
+    logging.info("Loaded %s nodes", f"{n_nodes:,}")
 
+    # Nodes are numbered in nodes-file order. Each node points at a "label
+    # set": the sorted tuple of its expanded categories. Nodes with the same
+    # categories share one label set, so the expansion runs once per distinct
+    # category combination, not once per node.
     logging.info("Expanding biolink category ancestors for each node...")
     biolink_cache_dir.mkdir(parents=True, exist_ok=True)
     bh = BiolinkHelper(biolink_version, str(biolink_cache_dir))
-    expanded_labels_by_node: Dict[str, List[str]] = {}
-    for node_id, node in nodes_dict.items():
-        category = node.get("category")
-        if not category:
-            expanded_labels_by_node[node_id] = []
-            continue
-        categories = category if isinstance(category, list) else [category]
-        expanded_labels_by_node[node_id] = list(
-            bh.get_ancestors(categories, include_mixins=True)
-        )
+    node_ids: List[str] = list(categories_by_node)
+    node_index: Dict[str, int] = {node_id: i for i, node_id in enumerate(node_ids)}
+    label_set_ids: Dict[Tuple[str, ...], int] = {}
+    label_sets: List[Tuple[str, ...]] = []
+    expansion_by_categories: Dict[Tuple[str, ...], int] = {}
+    node_label_set: List[int] = []
+    for categories in categories_by_node.values():
+        set_id = expansion_by_categories.get(categories)
+        if set_id is None:
+            labels = tuple(sorted(bh.get_ancestors(list(categories), include_mixins=True))) if categories else ()
+            set_id = label_set_ids.setdefault(labels, len(label_sets))
+            if set_id == len(label_sets):
+                label_sets.append(labels)
+            expansion_by_categories[categories] = set_id
+        node_label_set.append(set_id)
+    del categories_by_node, expansion_by_categories
+    labeled: List[bool] = [bool(label_sets[set_id]) for set_id in node_label_set]
+    logging.info("%s distinct category sets", f"{len(label_sets):,}")
 
     # -------------------------
     # edge_publications: streamed from the edges JSONL, only rows with
@@ -204,15 +233,13 @@ def create_tier0_overlay_sqlite_db(
         ")"
     )
 
-    neighbors_by_label: Dict[str, Dict[str, Set[str]]] = defaultdict(
-        lambda: defaultdict(set)
-    )
+    neighbors: Dict[int, Set[int]] = defaultdict(set)
 
     logging.info("Streaming edges and writing edge_publications rows...")
     changes_before = connection.total_changes
     connection.executemany(
         "INSERT OR IGNORE INTO edge_publications (arax_edge_key, publications) VALUES (?, ?)",
-        _iter_edge_publication_rows(edges_path, expanded_labels_by_node, neighbors_by_label),
+        _iter_edge_publication_rows(edges_path, node_index, labeled, neighbors),
     )
     inserted = connection.total_changes - changes_before
     logging.info("Inserted %s edge_publications rows", f"{inserted:,}")
@@ -222,20 +249,36 @@ def create_tier0_overlay_sqlite_db(
     # neighbors
     # -------------------------
 
-    logging.info("Writing neighbors table (%s nodes)...", f"{len(neighbors_by_label):,}")
+    # Edge endpoints that were not in the nodes file got indexes during the
+    # edge pass; extend the id list to cover them.
+    node_ids.extend([None] * (len(labeled) - len(node_ids)))
+    for node_id, index in node_index.items():
+        if index >= n_nodes:
+            node_ids[index] = node_id
+    del node_index
+
+    def neighbor_rows():
+        # A node's count for a category is the number of its distinct
+        # neighbors that have that category: count neighbors per label set,
+        # then add each label set's count to every category in it.
+        for index, neighbor_indexes in neighbors.items():
+            per_label_set = Counter(node_label_set[n] for n in neighbor_indexes)
+            counts: Dict[str, int] = defaultdict(int)
+            for set_id, count in per_label_set.items():
+                for label in label_sets[set_id]:
+                    counts[label] += count
+            yield node_ids[index], json.dumps(dict(sorted(counts.items())))
+
+    logging.info("Writing neighbors table (%s nodes)...", f"{len(neighbors):,}")
     connection.execute(
         "CREATE TABLE neighbors (id TEXT PRIMARY KEY, neighbor_counts TEXT)"
     )
-    neighbor_rows = (
-        (node_id, json.dumps({label: len(ids) for label, ids in labels.items()}))
-        for node_id, labels in neighbors_by_label.items()
-    )
     connection.executemany(
         "INSERT INTO neighbors (id, neighbor_counts) VALUES (?, ?)",
-        neighbor_rows,
+        neighbor_rows(),
     )
     connection.commit()
-    del neighbors_by_label
+    del neighbors
 
     # -------------------------
     # category_counts
@@ -246,17 +289,14 @@ def create_tier0_overlay_sqlite_db(
         "CREATE TABLE category_counts (category TEXT PRIMARY KEY, count INTEGER)"
     )
     nodes_by_label: Dict[str, int] = defaultdict(int)
-    for node_id in nodes_dict:
-        for label in expanded_labels_by_node.get(node_id, ()):
-            nodes_by_label[label] += 1
+    for set_id, count in Counter(node_label_set[:n_nodes]).items():
+        for label in label_sets[set_id]:
+            nodes_by_label[label] += count
     connection.executemany(
         "INSERT INTO category_counts (category, count) VALUES (?, ?)",
         nodes_by_label.items(),
     )
     connection.commit()
-
-    del nodes_dict
-    del expanded_labels_by_node
 
     connection.close()
 
@@ -264,6 +304,16 @@ def create_tier0_overlay_sqlite_db(
 # ---------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------
+
+def _read_biolink_version(graph_metadata: Path) -> str:
+    """Biolink version the graph was built with. Newer graph-metadata.json
+    files use the key `translator:biolinkVersion`; older ones `biolinkVersion`."""
+    metadata = json.loads(graph_metadata.read_text())
+    for key in ("translator:biolinkVersion", "biolinkVersion"):
+        if metadata.get(key):
+            return metadata[key]
+    raise KeyError(f"No Biolink version in {graph_metadata}")
+
 
 def _build_output_filename(output_dir: Path, tier0_build_date: str, schema_version: str) -> Path:
     return output_dir / f"tier0-info-for-overlay_v{schema_version}_tier0-{tier0_build_date}.sqlite"
@@ -285,16 +335,12 @@ def main() -> None:
                         help="Tier0 build date stamp in YYYYMMDD form (used in the filename).")
     parser.add_argument("--schema-version", default="1.0",
                         help="Schema version stamp embedded in the filename. Default: 1.0")
-    biolink = parser.add_mutually_exclusive_group(required=True)
-    biolink.add_argument(
-        "--biolink-version",
-        help="Biolink version for category-ancestor expansion.",
-    )
-    biolink.add_argument(
+    parser.add_argument(
         "--graph-metadata",
         type=Path,
-        help="Tier0 graph-metadata.json; its biolinkVersion is used for "
-             "category-ancestor expansion.",
+        required=True,
+        help="Tier0 graph-metadata.json. Category-ancestor expansion always "
+             "uses the Biolink version the graph was built with, read from here.",
     )
     parser.add_argument(
         "--biolink-cache-dir",
@@ -308,9 +354,8 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    biolink_version = args.biolink_version or json.loads(
-        args.graph_metadata.read_text())["biolinkVersion"]
-    logging.info("Biolink version: %s", biolink_version)
+    biolink_version = _read_biolink_version(args.graph_metadata)
+    logging.info("Biolink version (from %s): %s", args.graph_metadata, biolink_version)
 
     output_db = _build_output_filename(args.output_dir, args.tier0_build_date, args.schema_version)
     logging.info("Output: %s", output_db)

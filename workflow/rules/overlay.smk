@@ -9,11 +9,11 @@ rule overlay:
     params:
         output_dir=BUILD_DIR,
         version=VERSION,
-        biolink_cache_dir=BUILD_DIR / "biolink_cache",
+        biolink_cache_dir=BIOLINK_CACHE_DIR,
     log:
-        LOG_DIR / "overlay.log",
+        artifact_log(OVERLAY_DB),
     benchmark:
-        BENCH_DIR / "overlay.tsv"
+        artifact_benchmark(OVERLAY_DB)
     shell:
         "python {input.script}"
         " --nodes {input.nodes}"

@@ -42,18 +42,45 @@ DEFAULT_OUTPUT_DIR = os.environ.get(
 # ---------------------------------------------------------------------------
 # PubMed XML parse worker
 # ---------------------------------------------------------------------------
-def _parse_one_pubmed_file(file_path):
+# Baseline and update files share one numbering (pubmed26n0001 ... n1334 are
+# the baseline, n1335 onward are updates), so the file number orders every
+# record in time. A PMID that appears in several files was revised; only its
+# latest version counts. A DeleteCitation in a later file removes it.
+PUBMED_FILE_RE = re.compile(r"^pubmed(\d+)n(\d+)\.xml\.gz$")
+
+
+def _pubmed_file_number(file_name):
+    match = PUBMED_FILE_RE.match(file_name)
+    if match is None:
+        raise ValueError(f"Unexpected PubMed file name: {file_name}")
+    return match[1], int(match[2])
+
+
+def _parse_one_pubmed_file(item):
+    """Return (file_path, file_number, rows, article_pmids, deleted_pmids, error)
+    where rows are (concept_name, pmid) pairs."""
+    file_path, file_number = item
     rows = []
+    article_pmids = []
+    deleted_pmids = []
     try:
         with gzip.open(file_path, "rb") as gz_file:
-            context = etree.iterparse(gz_file, events=("end",), tag="PubmedArticle")
+            context = etree.iterparse(gz_file, events=("end",),
+                                      tag=("PubmedArticle", "DeleteCitation"))
             for _, article in context:
-                pmid_elements = article.xpath(".//MedlineCitation/PMID/text()")
-                if not pmid_elements:
+                if article.tag == "DeleteCitation":
+                    deleted_pmids.extend(int(p) for p in article.xpath("./PMID/text()")
+                                         if p.strip().isdigit())
                     article.clear()
                     continue
 
-                pmid_curie = f"PMID:{pmid_elements[0]}"
+                pmid_elements = article.xpath(".//MedlineCitation/PMID/text()")
+                if not pmid_elements or not pmid_elements[0].strip().isdigit():
+                    article.clear()
+                    continue
+
+                pmid = int(pmid_elements[0])
+                article_pmids.append(pmid)
                 mc = ".//MedlineCitation"
 
                 # MeSH qualifiers (subheadings like "metabolism", "pharmacology")
@@ -68,7 +95,7 @@ def _parse_one_pubmed_file(file_path):
                 )
 
                 for concept_name in process_names(all_concept_names):
-                    rows.append((concept_name, pmid_curie))
+                    rows.append((concept_name, pmid))
 
                 article.clear()
                 while article.getprevious() is not None:
@@ -77,9 +104,9 @@ def _parse_one_pubmed_file(file_path):
             del context
 
     except Exception as e:
-        return file_path, rows, str(e)
+        return file_path, file_number, rows, article_pmids, deleted_pmids, str(e)
 
-    return file_path, rows, None
+    return file_path, file_number, rows, article_pmids, deleted_pmids, None
 
 
 # ---------------------------------------------------------------------------
@@ -151,15 +178,21 @@ def _resolve_one(item):
     return curie, None, nums, None
 
 
-def _finalize_db(conn):
-    # WAL is only for build speed. A WAL-mode file needs write access to its
-    # directory even to be read, so switch back to a rollback journal before
-    # shipping. VACUUM drops the pages freed by the staging table, which are
-    # most of the file.
-    logging.info("Vacuuming...")
-    conn.execute("PRAGMA journal_mode=DELETE")
-    conn.execute("VACUUM")
-    conn.close()
+def _open_build_db(path):
+    """Open a fresh SQLite file for writing during the build.
+
+    Staging tables live in their own scratch files (deleted when done) so the
+    shipped databases only ever receive their final, sorted table: no freed
+    pages to VACUUM away, and no WAL mode left in the file (a WAL-mode file
+    needs write access to its directory even to be read). Journaling and
+    fsync are off because a failed build is rerun from scratch anyway.
+    """
+    if os.path.exists(path):
+        os.remove(path)
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA journal_mode=OFF")
+    conn.execute("PRAGMA synchronous=OFF")
+    return conn
 
 
 # ---------------------------------------------------------------------------
@@ -170,13 +203,6 @@ class NGDDatabaseBuilder:
 
     def __init__(self, pubmed_dir, babel_db_path, output_dir,
                  skip_download=False, tier0_edges_path=None):
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s %(levelname)s: %(message)s',
-            handlers=[logging.FileHandler(os.path.join(output_dir, "ngdbuild.log")),
-                      logging.StreamHandler()],
-        )
-
         self.pubmed_directory_path = pubmed_dir
         self.babel_db_path = babel_db_path
         self.output_dir = output_dir
@@ -224,77 +250,99 @@ class NGDDatabaseBuilder:
                 "-P", self.pubmed_directory_path,
             ])
 
-        if os.path.exists(self.conceptname_to_pmids_db_path):
-            os.remove(self.conceptname_to_pmids_db_path)
+        staging_path = os.path.join(self.output_dir, "conceptname_staging.sqlite")
+        staging_conn = _open_build_db(staging_path)
+        staging_conn.execute(
+            "CREATE TABLE staging (concept_name TEXT, pmid INTEGER, file_number INTEGER)"
+        )
 
-        conn = sqlite3.connect(self.conceptname_to_pmids_db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("CREATE TABLE staging (concept_name TEXT, pmid TEXT)")
-        conn.commit()
+        file_items = []
+        releases = set()
+        for sub_dir in ["baseline", "updatefiles"]:
+            xml_dir = f"{self.pubmed_directory_path}/ftp.ncbi.nlm.nih.gov/pubmed/{sub_dir}"
+            if not os.path.isdir(xml_dir):
+                logging.warning("Missing PubMed subdir: %s", xml_dir)
+                continue
+            files = [f for f in os.listdir(xml_dir) if PUBMED_FILE_RE.match(f)]
+            logging.info("  %s: %d files", sub_dir, len(files))
+            for f in files:
+                release, number = _pubmed_file_number(f)
+                releases.add(release)
+                file_items.append((f"{xml_dir}/{f}", number))
+        if len(releases) > 1:
+            raise RuntimeError(f"PubMed mirror mixes baseline releases {sorted(releases)}; "
+                               "file numbers would not order records correctly")
 
         num_workers = max(1, (multiprocessing.cpu_count() or 2) - 1)
         logging.info("Parsing PubMed XML with %d workers", num_workers)
 
         total_files = 0
         total_errors = 0
+        # pmid -> number of the latest file holding that article / deleting it
+        latest_article = {}
+        latest_delete = {}
 
-        for sub_dir in ["baseline", "updatefiles"]:
-            xml_dir = f"{self.pubmed_directory_path}/ftp.ncbi.nlm.nih.gov/pubmed/{sub_dir}"
+        with multiprocessing.Pool(num_workers) as pool:
+            for file_path, file_number, rows, article_pmids, deleted_pmids, err in pool.imap_unordered(
+                _parse_one_pubmed_file, file_items
+            ):
+                total_files += 1
+                if err:
+                    total_errors += 1
+                    logging.error("Parse failed for %s: %s", file_path, err)
+                staging_conn.executemany(
+                    "INSERT INTO staging VALUES (?, ?, ?)",
+                    ((name, pmid, file_number) for name, pmid in rows),
+                )
+                for pmid in article_pmids:
+                    if latest_article.get(pmid, -1) < file_number:
+                        latest_article[pmid] = file_number
+                for pmid in deleted_pmids:
+                    if latest_delete.get(pmid, -1) < file_number:
+                        latest_delete[pmid] = file_number
+                if total_files % 50 == 0:
+                    staging_conn.commit()
+                    logging.info("  parsed %d files (%d errors so far)",
+                                 total_files, total_errors)
+        staging_conn.commit()
 
-            if not os.path.isdir(xml_dir):
-                logging.warning("Missing PubMed subdir: %s", xml_dir)
-                continue
-
-            files = [f for f in os.listdir(xml_dir)
-                     if f.lower().startswith("pubmed") and f.endswith(".xml.gz")]
-            file_paths = [f"{xml_dir}/{f}" for f in files]
-            logging.info("  %s: %d files", sub_dir, len(file_paths))
-
-            with multiprocessing.Pool(num_workers) as pool:
-                for file_path, rows, err in pool.imap_unordered(
-                    _parse_one_pubmed_file, file_paths
-                ):
-                    total_files += 1
-                    if err:
-                        total_errors += 1
-                        logging.error("Parse failed for %s: %s", file_path, err)
-                    if rows:
-                        # chunked insert to bound memory
-                        for i in range(0, len(rows), 100_000):
-                            cursor.executemany(
-                                "INSERT INTO staging VALUES (?, ?)",
-                                rows[i:i + 100_000],
-                            )
-                    if total_files % 50 == 0:
-                        conn.commit()
-                        logging.info("  parsed %d files (%d errors so far)",
-                                     total_files, total_errors)
-
-            conn.commit()
+        # Keep each PMID's latest version unless a file at or after it deletes
+        # the PMID.
+        staging_conn.execute(
+            "CREATE TABLE pmid_keep (pmid INTEGER PRIMARY KEY, file_number INTEGER)"
+        )
+        staging_conn.executemany(
+            "INSERT INTO pmid_keep VALUES (?, ?)",
+            ((pmid, number) for pmid, number in latest_article.items()
+             if latest_delete.get(pmid, -1) < number),
+        )
+        staging_conn.commit()
+        n_kept = staging_conn.execute("SELECT COUNT(*) FROM pmid_keep").fetchone()[0]
+        logging.info("PMIDs: %d with articles, %d deleted, %d kept",
+                     len(latest_article), len(latest_article) - n_kept, n_kept)
+        del latest_article, latest_delete
 
         logging.info("Indexing staging table...")
-        cursor.execute("CREATE INDEX idx_staging_name ON staging(concept_name)")
-        conn.commit()
+        staging_conn.execute("CREATE INDEX idx_staging_name ON staging(concept_name)")
+        staging_conn.commit()
 
-        cursor.execute("""
+        conn = _open_build_db(self.conceptname_to_pmids_db_path)
+        conn.execute("""
             CREATE TABLE conceptname_to_pmids (
                 concept_name TEXT PRIMARY KEY,
                 pmids TEXT
             )
         """)
 
-        # Stream-aggregate in Python and emit real JSON.
+        # Stream-aggregate in Python and emit real JSON. The join drops rows
+        # from superseded article versions and deleted PMIDs.
         logging.info("Aggregating concept_name -> pmids...")
-        agg_cursor = conn.cursor()
-        rows_iter = agg_cursor.execute(
-            "SELECT concept_name, pmid FROM staging "
-            "ORDER BY concept_name"
+        rows_iter = staging_conn.execute(
+            "SELECT s.concept_name, s.pmid FROM staging AS s "
+            "JOIN pmid_keep AS k ON k.pmid = s.pmid AND k.file_number = s.file_number "
+            "ORDER BY s.concept_name"
         )
 
-        write_cursor = conn.cursor()
         current_name = None
         current_pmids = set()
         n_written = 0
@@ -303,9 +351,9 @@ class NGDDatabaseBuilder:
             nonlocal n_written
             if name is None:
                 return
-            write_cursor.execute(
+            conn.execute(
                 "INSERT INTO conceptname_to_pmids VALUES (?, ?)",
-                (name, json.dumps(sorted(pmids))),
+                (name, json.dumps([f"PMID:{p}" for p in sorted(pmids)])),
             )
             n_written += 1
             if n_written % 200_000 == 0:
@@ -321,9 +369,9 @@ class NGDDatabaseBuilder:
         flush(current_name, current_pmids)
 
         conn.commit()
-        cursor.execute("DROP TABLE staging")
-        conn.commit()
-        _finalize_db(conn)
+        conn.close()
+        staging_conn.close()
+        os.remove(staging_path)
 
         logging.info("Done concept DB in %.2f min (%d files, %d errors, %d concepts)",
                      (time.time() - start) / 60, total_files, total_errors, n_written)
@@ -335,23 +383,19 @@ class NGDDatabaseBuilder:
         logging.info("Building curie_to_pmids...")
         start = time.time()
 
-        if os.path.exists(self.curie_to_pmids_db_path):
-            os.remove(self.curie_to_pmids_db_path)
+        staging_path = os.path.join(self.output_dir, "curie_staging.sqlite")
+        staging_conn = _open_build_db(staging_path)
+        staging_cursor = staging_conn.cursor()
+        staging_cursor.execute("CREATE TABLE staging (curie TEXT, pmid INTEGER)")
+        staging_conn.commit()
 
-        out_conn = sqlite3.connect(self.curie_to_pmids_db_path)
-        out_cursor = out_conn.cursor()
-        out_cursor.execute("PRAGMA journal_mode=WAL")
-        out_cursor.execute("PRAGMA synchronous=NORMAL")
-        out_cursor.execute("CREATE TABLE staging (curie TEXT, pmid INTEGER)")
-        out_conn.commit()
-
-        self._add_pmids_from_pubmed_scrape(out_cursor, out_conn)
+        self._add_pmids_from_pubmed_scrape(staging_cursor, staging_conn)
 
         if self.status != 'OK':
             return
 
         if self.tier0_edges_path:
-            self._add_pmids_from_tier0_edges(out_cursor, out_conn)
+            self._add_pmids_from_tier0_edges(staging_cursor, staging_conn)
         else:
             logging.warning(
                 "No --tier0-edges provided; skipping tier 0 publication harvest. "
@@ -359,10 +403,11 @@ class NGDDatabaseBuilder:
             )
 
         logging.info("Indexing staging table...")
-        out_cursor.execute("CREATE INDEX idx_staging_curie ON staging(curie)")
-        out_conn.commit()
+        staging_cursor.execute("CREATE INDEX idx_staging_curie ON staging(curie)")
+        staging_conn.commit()
 
-        out_cursor.execute("""
+        out_conn = _open_build_db(self.curie_to_pmids_db_path)
+        out_conn.execute("""
             CREATE TABLE curie_to_pmids (
                 curie TEXT PRIMARY KEY,
                 pmids BLOB
@@ -370,8 +415,7 @@ class NGDDatabaseBuilder:
         """)
 
         logging.info("Aggregating curie -> pmids...")
-        agg_cursor = out_conn.cursor()
-        rows_iter = agg_cursor.execute(
+        rows_iter = staging_cursor.execute(
             "SELECT curie, pmid FROM staging ORDER BY curie"
         )
 
@@ -400,9 +444,10 @@ class NGDDatabaseBuilder:
             )
             n_written += 1
 
-        out_cursor.execute("DROP TABLE staging")
         out_conn.commit()
-        _finalize_db(out_conn)
+        out_conn.close()
+        staging_conn.close()
+        os.remove(staging_path)
 
         logging.info("Done curie DB in %.2f min (%d curies)",
                      (time.time() - start) / 60, n_written)

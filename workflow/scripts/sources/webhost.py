@@ -1,26 +1,20 @@
-"""Find and fetch the newest Tier0 KGX and DrugBank releases from the webhost.
+"""Find and fetch the newest DrugBank release from the webhost.
 
-The Snakefile imports this at parse time to pick which versions to build
-against (remote listings only, nothing is downloaded), and the fetch rules
-run it as a CLI to download a version that is missing locally.
+The Snakefile imports this at parse time to pick which DrugBank version to
+build against (remote listing only, nothing is downloaded), and the fetch
+rule runs it as a CLI to download a version that is missing locally.
 
-Versions are compared by date:
-    * Tier0:    the YYYYMMDD in the tier0-YYYYMMDD directory name
-    * DrugBank: the exported-on date in the drugbank.xml root element
+Versions are compared by the exported-on date in the drugbank.xml root element.
 """
 
 import argparse
 import hashlib
-import json
 import logging
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-TIER0_DIR_RE = re.compile(r"tier0-(\d{8})$")
-TIER0_BUNDLE = "translator_kg.tar.zst"
-TIER0_FILES = ("nodes.jsonl", "edges.jsonl", "graph-metadata.json")
 DRUGBANK_FILE_RE = re.compile(r"drugbank-(\d{4}-\d{2}-\d{2})\.xml$")
 DRUGBANK_EXPORT_RE = re.compile(r'exported-on="(\d{4}-\d{2}-\d{2})"')
 SSH_OPTIONS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
@@ -45,24 +39,6 @@ def ssh(host: str, command: str) -> str:
 # ---------------------------------------------------------------------
 # Version discovery
 # ---------------------------------------------------------------------
-
-def remote_tier0_versions(host: str, root: str) -> set[str]:
-    """Tier0 versions on the webhost that have a complete bundle.
-
-    rsync only renames the bundle into place once the transfer finishes, so a
-    listed bundle is never a partial upload.
-    """
-    out = ssh(host, f"ls -1 {root}/tier0-*/{TIER0_BUNDLE} 2>/dev/null || true")
-    return {m[1] for line in out.split()
-            if (m := TIER0_DIR_RE.search(Path(line).parent.name))}
-
-
-def local_tier0_versions(root: Path) -> set[str]:
-    """Tier0 versions already unpacked locally."""
-    return {m[1] for path in root.glob("tier0-*")
-            if (m := TIER0_DIR_RE.search(path.name))
-            and all((path / "knowledge_graph" / f).exists() for f in TIER0_FILES)}
-
 
 def remote_drugbank_version(host: str, path: str) -> str | None:
     """exported-on date of the DrugBank XML on the webhost, or None if absent."""
@@ -121,22 +97,6 @@ def verify_md5(host: str, remote_path: str, local_path: Path) -> None:
     logging.info("md5 ok: %s", local_path)
 
 
-def fetch_tier0(host: str, root: str, version: str, kgx_dir: Path) -> None:
-    """Download and unpack one Tier0 bundle into kgx_dir."""
-    remote = f"{root}/tier0-{version}/{TIER0_BUNDLE}"
-    bundle = kgx_dir / TIER0_BUNDLE
-    rsync(host, remote, bundle)
-    verify_md5(host, remote, bundle)
-    logging.info("Unpacking %s", bundle)
-    subprocess.run(["tar", "--zstd", "-xf", str(bundle), "-C", str(kgx_dir),
-                    *TIER0_FILES], check=True)
-
-    metadata = json.loads((kgx_dir / "graph-metadata.json").read_text())
-    if metadata["version"].replace("_", "") != version:
-        raise RuntimeError(f"graph-metadata.json version {metadata['version']!r} "
-                           f"does not match directory tier0-{version}")
-
-
 def fetch_drugbank(host: str, remote_path: str, version: str, local_path: Path) -> None:
     """Download the webhost DrugBank XML and check it is the expected release."""
     if remote_drugbank_version(host, remote_path) != version:
@@ -146,25 +106,18 @@ def fetch_drugbank(host: str, remote_path: str, version: str, local_path: Path) 
 
 
 def main() -> None:
-    """CLI entry point used by the fetch rules."""
+    """CLI entry point used by the fetch_drugbank rule."""
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("kind", choices=["tier0", "drugbank"])
     parser.add_argument("--host", required=True, help="user@host of the webhost.")
-    parser.add_argument("--remote", required=True,
-                        help="Tier0: webhost root holding tier0-*/ dirs. "
-                             "DrugBank: path of the XML on the webhost.")
+    parser.add_argument("--remote", required=True, help="Path of the XML on the webhost.")
     parser.add_argument("--version", required=True)
-    parser.add_argument("--dest", type=Path, required=True,
-                        help="Tier0: local knowledge_graph dir. DrugBank: local XML path.")
+    parser.add_argument("--dest", type=Path, required=True, help="Local XML path.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
-    if args.kind == "tier0":
-        fetch_tier0(args.host, args.remote, args.version, args.dest)
-    else:
-        fetch_drugbank(args.host, args.remote, args.version, args.dest)
+    fetch_drugbank(args.host, args.remote, args.version, args.dest)
 
 
 if __name__ == "__main__":

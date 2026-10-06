@@ -35,9 +35,9 @@ conn.text_factory = str
 c = conn.cursor()
 
 print("Creating tables")
+# rtxcomplete keeps its fragment cache in its own rtxcomplete_cache.sqlite, so
+# this database holds only the terms it searches.
 c.execute("CREATE TABLE terms(term VARCHAR(255) COLLATE NOCASE)")
-c.execute("CREATE TABLE cached_fragments(fragment VARCHAR(255) COLLATE NOCASE)")
-c.execute("CREATE TABLE cached_fragment_terms(fragment_id INT, term VARCHAR(255) COLLATE NOCASE)")
 
 row_count = 0
 uc_terms = {}
@@ -65,7 +65,6 @@ with open(args.input, 'r', encoding="utf-8") as nodeData:
 
 print("\nCreating indexes")
 c.execute("CREATE INDEX idx_terms_term ON terms(term)")
-c.execute("CREATE INDEX idx_cached_fragments_fragment ON cached_fragments(fragment)")
 
 conn.commit()
 conn.close()

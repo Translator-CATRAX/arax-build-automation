@@ -1,5 +1,13 @@
+import json
+import os
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
+
+# Rules run their scripts with bare `python`; make that the interpreter running
+# Snakemake (the project venv) however Snakemake was started.
+os.environ["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}"
 
 configfile: "config/config.yaml"
 OUTPUT_ROOT = Path(config["output_root"])
@@ -8,20 +16,65 @@ SCRIPTS = Path(workflow.basedir) / "scripts"
 sys.path.insert(0, str(SCRIPTS / "sources"))
 import webhost
 
-# Pick the Tier0 and DrugBank versions to build against: the newest of what is
-# local and what is on the webhost (or a version pinned in the config). Only
-# listings are fetched here; the fetch rules download a version when its local
-# files are missing, so an up-to-date local copy is never re-downloaded.
-WEBHOST = config["webhost"]
-TIER0_ROOT = Path(config["tier0_root"])
-DRUGBANK_DIR = Path(config["drugbank_dir"])
+# The Tier0 graph is placed by hand under {graph_root}/YYYYMMDD/ (the graph's
+# build date). Build the newest complete one, or the version pinned in the
+# config.
+GRAPH_ROOT = Path(config["graph_root"])
+GRAPH_FILES = ("nodes.jsonl", "edges.jsonl", "graph-metadata.json")
 
-VERSION = webhost.resolve(
-    "Tier0",
-    webhost.local_tier0_versions(TIER0_ROOT),
-    lambda: webhost.remote_tier0_versions(WEBHOST, config["webhost_tier0_root"]),
-    config.get("tier0_version"),
-)
+
+def local_graph_versions(root: Path) -> set[str]:
+    """YYYYMMDD graph directories under root that have every graph file."""
+    return {path.name for path in root.glob("*")
+            if re.fullmatch(r"\d{8}", path.name)
+            and all((path / f).exists() for f in GRAPH_FILES)}
+
+
+VERSION = str(config.get("graph_version") or max(local_graph_versions(GRAPH_ROOT), default=""))
+if not VERSION:
+    raise ValueError(f"No complete graph directory (YYYYMMDD/ with {', '.join(GRAPH_FILES)}) "
+                     f"under {GRAPH_ROOT}")
+KGX_DIR = GRAPH_ROOT / VERSION
+if missing := [f for f in GRAPH_FILES if not (KGX_DIR / f).exists()]:
+    raise ValueError(f"Graph {KGX_DIR} is missing {', '.join(missing)}")
+print(f"Tier0: using {VERSION} from {KGX_DIR}", file=sys.stderr)
+
+# The Biolink and Babel versions are the ones the graph was built with, as
+# recorded in its graph-metadata.json, so the artifacts always match the graph.
+# Newer metadata files use the translator: keys, older ones the bare names.
+GRAPH_METADATA = KGX_DIR / "graph-metadata.json"
+_graph_metadata = json.loads(GRAPH_METADATA.read_text())
+
+
+def graph_metadata_version(name: str) -> str:
+    """The graph's recorded version of name (e.g. "babelVersion")."""
+    for key in (f"translator:{name}", name):
+        if _graph_metadata.get(key):
+            return str(_graph_metadata[key])
+    raise ValueError(f"{GRAPH_METADATA} records no {name} (translator:{name})")
+
+
+BIOLINK_VERSION = graph_metadata_version("biolinkVersion")
+
+# Babel versions are recorded like "2026jul22"; the sqlite for that release is
+# babel-20260722.sqlite in babel_dir, placed there by hand.
+BABEL_VERSION = graph_metadata_version("babelVersion")
+try:
+    _babel_date = datetime.strptime(BABEL_VERSION, "%Y%b%d").strftime("%Y%m%d")
+except ValueError:
+    raise ValueError(f"Unrecognized babelVersion {BABEL_VERSION!r} in {GRAPH_METADATA}; "
+                     "expected the form 2026jul22") from None
+BABEL_SQLITE = Path(config["babel_dir"]) / f"babel-{_babel_date}.sqlite"
+if not BABEL_SQLITE.exists():
+    raise ValueError(f"The graph was built with Babel {BABEL_VERSION}, but {BABEL_SQLITE} "
+                     "does not exist. Place that Babel sqlite there and rerun.")
+print(f"Biolink: {BIOLINK_VERSION}; Babel: {BABEL_VERSION} ({BABEL_SQLITE})", file=sys.stderr)
+
+# DrugBank: the newest of what is local and what is on the webhost (or a
+# version pinned in the config). Only the listing is fetched here; the fetch
+# rule downloads a version when its local file is missing.
+WEBHOST = config["webhost"]
+DRUGBANK_DIR = Path(config["drugbank_dir"])
 DRUGBANK_VERSION = webhost.resolve(
     "DrugBank",
     webhost.local_drugbank_versions(DRUGBANK_DIR),
@@ -30,35 +83,71 @@ DRUGBANK_VERSION = webhost.resolve(
 )
 
 TIER0 = f"tier0-{VERSION}"
-KGX_DIR = TIER0_ROOT / TIER0 / "knowledge_graph"
-GRAPH_METADATA = KGX_DIR / "graph-metadata.json"
 DRUGBANK_XML = DRUGBANK_DIR / f"drugbank-{DRUGBANK_VERSION}.xml"
 
-BUILD_DIR = OUTPUT_ROOT / TIER0
+BUILD_DIR = OUTPUT_ROOT / VERSION
 LOG_DIR = BUILD_DIR / "logs"
 BENCH_DIR = BUILD_DIR / "benchmarks"
 
 AUTOCOMPLETE_DB = BUILD_DIR / f"autocomplete_v1.0_{TIER0}.sqlite"
 OVERLAY_DB = BUILD_DIR / f"tier0-info-for-overlay_v1.0_{TIER0}.sqlite"
 CURIE_TO_PMIDS_DB = BUILD_DIR / f"curie_to_pmids_v1.0_{TIER0}.sqlite"
-CONCEPTNAME_TO_PMIDS_DB = BUILD_DIR / "conceptname_to_pmids.sqlite"
+CURIE_NGD_DB = BUILD_DIR / f"curie_ngd_v1.0_{TIER0}.sqlite"
 FDA_DRUGS_PICKLE = BUILD_DIR / "fda_approved_drugs_v1.0.pickle"
 PUBMED_MANIFEST = BUILD_DIR / "pubmed_manifest.json"
+CONFIG_DBS = BUILD_DIR / "config_dbs.json"
 
 # Artifacts that get staged for release. Each one gets an md5 in MD5_DIR;
 # asking for the md5 makes Snakemake build the artifact first.
 MD5_DIR = BUILD_DIR / "md5_sums"
-RELEASE_ARTIFACTS = [AUTOCOMPLETE_DB, OVERLAY_DB, CURIE_TO_PMIDS_DB, FDA_DRUGS_PICKLE]
+RELEASE_ARTIFACTS = [AUTOCOMPLETE_DB, OVERLAY_DB, CURIE_TO_PMIDS_DB, CURIE_NGD_DB, FDA_DRUGS_PICKLE]
+
+# Scratch space for intermediates, deleted by the rules that use it. The
+# Biolink lookup cache is shared across builds.
+WORK_DIR = BUILD_DIR / "work"
+BIOLINK_CACHE_DIR = OUTPUT_ROOT / ".cache" / "biolink"
+
+TEST_RESULTS_DIR = BUILD_DIR / "test_results"
+ARTIFACT_TEST_RESULTS = TEST_RESULTS_DIR / "artifacts.xml"
+CONFIG_DBS_TEST_RESULTS = TEST_RESULTS_DIR / "config_dbs.xml"
+ARTIFACT_STATS = BUILD_DIR / "artifact_stats.json"
+BUILD_REPORT = BUILD_DIR / "build_report.md"
+RTX_PR_RESULT = BUILD_DIR / "rtx_pr.json"
+RTX_PR = config.get("rtx_pr", {})
+
+
+def artifact_log(artifact: Path) -> Path:
+    """The log of the rule that builds artifact, named after the artifact."""
+    return LOG_DIR / f"{artifact.name}.log"
+
+
+def artifact_benchmark(artifact: Path) -> Path:
+    """The benchmark of the rule that builds artifact, named after the artifact."""
+    return BENCH_DIR / f"{artifact.name}.tsv"
+
+
+# Rules delete their own scratch files; drop the scratch directory once a run
+# has finished with nothing left in it.
+onsuccess:
+    if WORK_DIR.is_dir() and not any(WORK_DIR.iterdir()):
+        WORK_DIR.rmdir()
 
 
 rule all:
     input:
         [MD5_DIR / f"{artifact.name}.md5" for artifact in RELEASE_ARTIFACTS],
+        CONFIG_DBS,
+        BUILD_REPORT,
+        [RTX_PR_RESULT] if RTX_PR.get("enabled") else [],
 
 
 include: "rules/sources.smk"
 include: "rules/autocomplete.smk"
 include: "rules/overlay.smk"
 include: "rules/curie_pmids.smk"
+include: "rules/curie_ngd.smk"
 include: "rules/fda_drugs.smk"
 include: "rules/md5.smk"
+include: "rules/arax_config.smk"
+include: "rules/report.smk"
+include: "rules/rtx_pr.smk"

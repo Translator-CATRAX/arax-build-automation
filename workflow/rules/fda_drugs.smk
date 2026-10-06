@@ -4,13 +4,13 @@ rule fda_drugs:
     input:
         script=SCRIPTS / "fda_drugs" / "generate_fda_pickle.py",
         drugbank=DRUGBANK_XML,
-        babel=config["babel_sqlite"],
+        babel=BABEL_SQLITE,
     output:
         FDA_DRUGS_PICKLE,
     log:
-        LOG_DIR / "fda_drugs.log",
+        artifact_log(FDA_DRUGS_PICKLE),
     benchmark:
-        BENCH_DIR / "fda_drugs.tsv"
+        artifact_benchmark(FDA_DRUGS_PICKLE)
     shell:
         "python {input.script}"
         " --drugbank_xml {input.drugbank}"

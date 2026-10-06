@@ -1,29 +1,20 @@
-AUTOCOMPLETE_TSV = BUILD_DIR / "autocomplete_names.tsv"
-
-
-rule autocomplete_extract:
+# Names and IDs are pulled from the graph's nodes into a TSV in WORK_DIR, then
+# loaded into the autocomplete database. The TSV is deleted once loaded.
+rule autocomplete:
     input:
-        script=SCRIPTS / "autocomplete" / "extract_names_ids.py",
+        extract=SCRIPTS / "autocomplete" / "extract_names_ids.py",
+        load=SCRIPTS / "autocomplete" / "create_load_db.py",
         nodes=KGX_DIR / "nodes.jsonl",
     output:
-        temp(AUTOCOMPLETE_TSV),
-    log:
-        LOG_DIR / "autocomplete_extract.log",
-    benchmark:
-        BENCH_DIR / "autocomplete_extract.tsv"
-    shell:
-        "python {input.script} {input.nodes} {output} > {log} 2>&1"
-
-
-rule autocomplete_load:
-    input:
-        script=SCRIPTS / "autocomplete" / "create_load_db.py",
-        tsv=AUTOCOMPLETE_TSV,
-    output:
         AUTOCOMPLETE_DB,
+    params:
+        tsv=WORK_DIR / "autocomplete_names.tsv",
     log:
-        LOG_DIR / "autocomplete_load.log",
+        artifact_log(AUTOCOMPLETE_DB),
     benchmark:
-        BENCH_DIR / "autocomplete_load.tsv"
+        artifact_benchmark(AUTOCOMPLETE_DB)
     shell:
-        "python {input.script} -i {input.tsv} -o {output} > {log} 2>&1"
+        "mkdir -p $(dirname {params.tsv})"
+        " && python {input.extract} {input.nodes} {params.tsv} > {log} 2>&1"
+        " && python {input.load} -i {params.tsv} -o {output} >> {log} 2>&1"
+        " && rm {params.tsv}"

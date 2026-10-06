@@ -1,18 +1,44 @@
-babel_sqlite: /home/hodgesf/Desktop/code/large_files/babel-20260722.sqlite
-output_root: /home/hodgesf/Desktop/code/database/autobuild_test
+# Babel sqlite files, named babel-YYYYMMDD.sqlite. The build uses the release
+# the graph was built with (translator:babelVersion in its graph-metadata.json)
+# and stops if that file is not here. Biolink likewise follows the graph.
+babel_dir: /home/hodgesf/Desktop/code/large_files
 pubmed_dir: /home/hodgesf/Desktop/code/large_files/pubmed
 
-# Inputs are pulled from the webhost when it has a newer version than what is
+# Tier0 graph, placed by hand as {graph_root}/YYYYMMDD/{nodes.jsonl,edges.jsonl,graph-metadata.json}
+# where YYYYMMDD is the graph's build date. The newest one is built unless
+# graph_version pins another.
+graph_root: /home/hodgesf/Desktop/code/large_files/translator_kg
+# graph_version: "20260928"
+
+# Artifacts are written to {output_root}/YYYYMMDD/.
+output_root: /home/hodgesf/Desktop/code/database
+
+# DrugBank is pulled from the webhost when it has a newer version than what is
 # local, or when nothing is local. Access is over SSH (key-based, no password).
 webhost: ubuntu@kg2webhost.rtx.ai
-webhost_tier0_root: /var/www/kg2webhost          # holds tier0-YYYYMMDD/translator_kg.tar.zst
 webhost_drugbank: /home/ubuntu/drugbank.xml      # private: DrugBank is not redistributable
-
-# Local copies. Tier0 unpacks to {tier0_root}/tier0-YYYYMMDD/knowledge_graph/,
-# DrugBank to {drugbank_dir}/drugbank-{exported-on}.xml.
-tier0_root: /home/hodgesf/Desktop/code/database
 drugbank_dir: /home/hodgesf/Desktop/code/large_files/drugbank
-
-# Uncomment to build against a specific version instead of the newest.
-# tier0_version: "20260621"
 # drugbank_version: "2023-01-04"
+
+# ARAX config_dbs.json: the build writes an updated copy of this file to
+# {output_root}/YYYYMMDD/config_dbs.json, pointing the artifacts this pipeline
+# builds at arax_db_root/tier0-YYYYMMDD/. The RTX checkout is not modified.
+rtx_config_dbs: /home/hodgesf/Desktop/code/RTX/code/config_dbs.json
+arax_db_root: /translator/data/orangeboard/databases
+
+# Propose the tested config_dbs.json to RTX as a pull request. Each build gets a
+# new branch {branch_prefix}tier0-YYYYMMDD made from the head of base; only that
+# branch is ever pushed (never forced), and the PR waits for human review. The
+# step stops unless every artifact is already staged in staged_dir on
+# staged_host with a matching md5, because the PR's CI downloads them there.
+#   enabled: run this step as part of a normal build
+#   push:    false = dry run (clone and show the change and the PR; commit and push nothing)
+rtx_pr:
+  enabled: false
+  push: false
+  repo: RTXTeam/RTX
+  remote: git@github.com:RTXTeam/RTX
+  base: master
+  branch_prefix: autobuild/
+  staged_host: rtxconfig@arax-databases.rtx.ai
+  staged_dir: /home/rtxconfig/tier0-{version}
