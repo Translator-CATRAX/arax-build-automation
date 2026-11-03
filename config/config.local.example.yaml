@@ -1,8 +1,8 @@
 # Copy this to config/config.local.yaml (not tracked) and fill it in. The build
 # stops until every value below is set. Anything here overrides config.yaml.
 
-# Local directories. Babel, PubMed and DrugBank are downloaded if missing; the
-# Tier0 graph is placed by hand as {graph_root}/YYYYMMDD/.
+# Local directories. The Tier0 graph, Babel, PubMed and DrugBank are downloaded
+# if they're missing.
 graph_root: /path/to/translator_kg
 babel_dir: /path/to/babel
 pubmed_dir: /path/to/pubmed
@@ -12,8 +12,9 @@ output_root: /path/to/arax_databases
 # Your RTX checkout, on an up-to-date master.
 rtx_config_dbs: /path/to/RTX/code/config_dbs.json
 
-# The graph to build: the name of its folder in graph_root.
-graph_version: "YYYYMMDD"
+# The graph to build, as YYYYMMDD. Leave it out to use the latest release; set it
+# to stay on one graph, which also keeps a rerun from moving to a newer release.
+# graph_version: "YYYYMMDD"
 
 # Only needed for real staging. Staging stops until this is your own login;
 # ITRB creates them (#devops-teamexpanderagent in the Translator Slack).

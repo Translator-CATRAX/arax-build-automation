@@ -228,10 +228,12 @@ def do_build(build: Build, names: list[str], rehearse: bool, new_version: bool, 
         return
     rules = [BY_NAME[name].rule for name in names]
     force = ["--forcerun", *rules] if rules else []
+    # Passed on so a rerun of Snakemake can't pick a different graph than this run did.
+    pin = ["--config", f"graph_version={build.version}"]
     if rehearse:
-        run_snakemake("all", *force, "-n")
+        run_snakemake("all", *pin, *force, "-n")
     else:
-        run_snakemake("all", *force, "-c", str(build.config["_cores"]), "--rerun-incomplete")
+        run_snakemake("all", *pin, *force, "-c", str(build.config["_cores"]), "--rerun-incomplete")
 
 
 def with_dependents(names: list[str]) -> list[str]:
@@ -264,6 +266,10 @@ def rebuild_as_new_version(build: Build, names: list[str], rehearse: bool, new_v
             raise Fail("Creating a new version needs its own flag: add --new-version.")
         if not confirm(f"Rebuild as version {version}?"):
             raise Fail("Cancelled; nothing was built.")
+    import tier0
+    if not tier0.is_complete(graph_dir(build)):
+        raise Fail(f"The graph isn't in {graph_dir(build)} any more. Rebuilding needs the one this "
+                   "build used; download it again from its release.")
 
     directory = build.dir / f"v{version}"
     directory.mkdir(parents=True)  # next_version() is unused, so this never overwrites
@@ -605,15 +611,41 @@ def parse_args(argv: list[str] | None, target_names: list[str]) -> argparse.Name
     return args
 
 
+def newest_built(output_root: Path) -> str | None:
+    """The newest build that got as far as its report."""
+    if not output_root.is_dir():
+        return None
+    built = [d.name for d in output_root.iterdir()
+             if re.fullmatch(r"\d{8}", d.name) and (d / "build_report.md").exists()]
+    return max(built, default=None)
+
+
+def choose_version(config: dict, builds: bool) -> str:
+    """The graph this run is for, chosen once so every step uses the same one."""
+    import tier0
+    pinned = config.get("graph_version")
+    built = newest_built(Path(config["output_root"]))
+    if not pinned and not builds and built:
+        # Only releasing: the build already made, even if a newer graph has come out.
+        print(f"graph_version isn't set, so this is for the newest build, {built}.")
+        return built
+    try:
+        version, _ = tier0.resolve(Path(config["graph_root"]), pinned, config["graph_releases"])
+    except (OSError, ValueError) as err:
+        raise SystemExit(f"Can't choose a graph: {err}") from None
+    if not pinned and builds and built and built != version:
+        print(f"NOTE: {version} is the latest release, so this is a new build, not {built}. "
+              f"To continue {built} instead, set graph_version in config/config.local.yaml.")
+    return version
+
+
 def main(argv: list[str] | None = None) -> None:
     config = local_config.load_config(REPO)
     args = parse_args(argv, list(config["staging"]["targets"]))
     if args.unlock:
         subprocess.run([sys.executable, "-m", "snakemake", "--unlock"], cwd=REPO, check=True)
         return
-    if unset := local_config.missing_settings(config, keys=("graph_version",)):
-        raise SystemExit(f"Missing settings: {', '.join(unset)}. {local_config.SETUP_HINT}")
-
+    config["graph_version"] = choose_version(config, args.build is not None)
     config["_cores"] = args.cores
     build = Build(config)
     print(f"Tier0 build {build.version}, in {build.dir}" + (" (rehearsal: nothing changes)" if args.rehearse else ""))

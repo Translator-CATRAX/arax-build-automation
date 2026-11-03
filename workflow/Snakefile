@@ -20,30 +20,28 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS / "sources"))
 import babel
 import local_config
+import tier0
 import webhost
 
 # Stop now, with a clear message, if anything only you can supply is missing.
-if unset := local_config.missing_settings(
-        config, keys=(*local_config.REQUIRED_PATHS, "graph_version")):
+if unset := local_config.missing_settings(config):
     raise ValueError(f"Missing settings: {', '.join(unset)}. {local_config.SETUP_HINT}")
 
 OUTPUT_ROOT = Path(config["output_root"])
 
-# The Tier0 graph is placed by hand under {graph_root}/YYYYMMDD/ (the graph's
-# build date), and graph_version says which one to build.
+# The Tier0 graph lives in {graph_root}/YYYYMMDD/ (the graph's build date): the one
+# graph_version names, or the latest release if it's unset. The fetch rule downloads
+# it when it isn't local.
 GRAPH_ROOT = Path(config["graph_root"])
-GRAPH_FILES = ("nodes.jsonl", "edges.jsonl", "graph-metadata.json")
-VERSION = str(config["graph_version"])
+VERSION, GRAPH_RELEASE = tier0.resolve(GRAPH_ROOT, config.get("graph_version"), config["graph_releases"])
 KGX_DIR = GRAPH_ROOT / VERSION
-if missing := [f for f in GRAPH_FILES if not (KGX_DIR / f).exists()]:
-    raise ValueError(f"Graph {KGX_DIR} is missing {', '.join(missing)}")
-print(f"Tier0: using {VERSION} from {KGX_DIR}", file=sys.stderr)
 
 # The Biolink and Babel versions are the ones the graph was built with, as
 # recorded in its graph-metadata.json, so the artifacts always match the graph.
 # Newer metadata files use the translator: keys, older ones the bare names.
 GRAPH_METADATA = KGX_DIR / "graph-metadata.json"
-_graph_metadata = json.loads(GRAPH_METADATA.read_text())
+_graph_metadata = (tier0.remote_metadata(GRAPH_RELEASE) if GRAPH_RELEASE
+                   else json.loads(GRAPH_METADATA.read_text()))
 
 
 def graph_metadata_version(name: str) -> str:

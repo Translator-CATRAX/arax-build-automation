@@ -35,3 +35,21 @@ if BABEL_RELEASE:
         shell:
             "python {params.script} --url {params.url} --md5 {params.md5}"
             " --dest {output} > {log} 2>&1"
+
+
+# Download and unpack the Tier0 graph from its release. This runs only when it
+# isn't local (see the Snakefile). Protected, like the other downloads.
+if GRAPH_RELEASE:
+    rule fetch_graph:
+        output:
+            protected(KGX_DIR / "nodes.jsonl"),
+            protected(KGX_DIR / "edges.jsonl"),
+            protected(GRAPH_METADATA),
+        params:
+            script=SCRIPTS / "sources" / "tier0.py",
+            url=GRAPH_RELEASE.url,
+            dest=KGX_DIR,
+        log:
+            LOG_DIR / "fetch_graph.log",
+        shell:
+            "python {params.script} --release-url {params.url} --dest {params.dest} > {log} 2>&1"

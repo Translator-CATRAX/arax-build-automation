@@ -53,7 +53,7 @@ Don't start a phase until the previous one's gate is met. Record the evidence in
 
 | Phase | Done when | Evidence to record | Stop if |
 |---|---|---|---|
-| 1 | graph unpacked; PSU has the stamp; pre-flight checks pass | release version, `YYYYMMDD`, xDTD rebuild/refresh decision | a pre-flight check fails |
+| 1 | graph chosen; PSU has the stamp; pre-flight checks pass | release version, `YYYYMMDD`, xDTD rebuild/refresh decision | a pre-flight check fails |
 | 2 | `./autobuild --full` finished; build reviewed ([2e](#2e-review-the-build-report)) | PR link; build report link; inputs not in the report (Babel file, DrugBank version, RTX template commit); curie_to_pmids error counts; FDA set comparison | a test failed; parse or resolve errors unexplained; a count dropped without explanation |
 | 3 | xDTD on all four servers, checksums match PSU's | PSU's md5; md5 on each server | any checksum mismatch |
 | 4 | every [4a](#4a-database-paths)–[4c](#4c-generate-db-symlinkssh) item done and pushed | commit SHA of the branch head | FDA set changed but no new filename |
@@ -65,7 +65,7 @@ Don't start a phase until the previous one's gate is met. Record the evidence in
 ### The whole flow
 
 ```
- Tier0 graph (by hand) ──▶ autobuild ───────────────────────────────────────────────┐
+ Tier0 graph (fetched) ──▶ autobuild ───────────────────────────────────────────────┐
                            ├ fetch Babel, DrugBank, PubMed                           │
                            ├ build the 5 artifacts                                   │
                            ├ test them                         (stops on failure)    │
@@ -203,7 +203,6 @@ autobuild stops with a `Missing settings` error until these are set:
 
 - `graph_root`, `babel_dir`, `pubmed_dir`, `drugbank_dir`, `output_root`: local directories
 - `rtx_config_dbs`: your RTX checkout's `code/config_dbs.json`
-- `graph_version`: the graph to build
 - `staging.targets.itrb_sftp.host`: your own `team-expander-USERNAME@sftp.transltr.io` (only when staging)
 
 Examples on this page use these paths; substitute your own:
@@ -228,9 +227,9 @@ Create an issue in RTXteam/RTX titled like "Roll out ARAX Tier0-YYYYMMDD" and pa
 
 There is no `issue-XXXX` branch any more. autobuild creates `autobuild/tier0-YYYYMMDD` from master, and every other change for the rollout is pushed to that branch ([Phase 4](#phase-4-integration-on-the-autobuild-branch)).
 
-### 1b. Get the Tier0 graph
+### 1b. Choose the Tier0 graph
 
-Releases are at <https://kgx-storage.ci.transltr.io/releases/translator_kg/> (no login). Use `translator_kg`, **not** `translator_kg_open`. Each release is a version folder (`1.0.2`, `1.0.3`, …) holding `translator_kg.tar.zst` (`nodes.jsonl`, `edges.jsonl` and `graph-metadata.json`, ~3.4 GB compressed, ~28 GB unpacked) and separate metadata files.
+Releases are at <https://kgx-storage.ci.transltr.io/releases/translator_kg/> (no login). autobuild uses `translator_kg`, **not** `translator_kg_open`. Each release is a version folder (`1.0.2`, `1.0.3`, …) holding `translator_kg.tar.zst` (`nodes.jsonl`, `edges.jsonl` and `graph-metadata.json`, ~3.4 GB compressed, ~28 GB unpacked) and separate metadata files.
 
 Find the newest release and its build date:
 
@@ -238,16 +237,7 @@ Find the newest release and its build date:
 curl -s https://kgx-storage.ci.transltr.io/releases/translator_kg/latest-release.json
 ```
 
-`release_version` (e.g. `1.0.2`) is the folder to download. The date part of `build_date` (`2026-09-28T23:50:46Z` → `20260928`) is the directory to unpack into, and becomes the rollout's `YYYYMMDD`.
-
-```bash
-mkdir /data/translator_kg/20260928
-cd /data/translator_kg/20260928
-curl -LO https://kgx-storage.ci.transltr.io/releases/translator_kg/1.0.2/translator_kg.tar.zst
-tar --zstd -xf translator_kg.tar.zst
-rm translator_kg.tar.zst
-ls -l      # exactly nodes.jsonl, edges.jsonl, graph-metadata.json
-```
+`release_version` (e.g. `1.0.2`) is the folder. The date part of `build_date` (`2026-09-28T23:50:46Z` → `20260928`) is the rollout's `YYYYMMDD`. autobuild downloads the graph to `{graph_root}/YYYYMMDD/` if it isn't there.
 
 ### 1c. Coordinate with PSU
 
@@ -257,7 +247,7 @@ curie_ngd is now built by autobuild, so PSU (previously @mohsenht) no longer nee
 
 ### 1d. Pre-flight checks
 
-- [ ] The graph directory is complete (1b).
+- [ ] `graph_version` is set (1b, 2a), and there's room for the graph if it isn't local yet.
 - [ ] Your RTX checkout is on an up-to-date `master`. **This matters:** autobuild makes the new `config_dbs.json` from it, and the PR replaces RTX's file with it, so a stale checkout would quietly revert other changes to that file.
   ```bash
   git -C /path/to/RTX switch master && git -C /path/to/RTX pull
@@ -284,7 +274,7 @@ All commands run from the arax-build-automation checkout with `.venv/bin` on PAT
 
 ### 2a. Set the graph version
 
-In `config/config.local.yaml`, set `graph_version` to this rollout's `YYYYMMDD`. Nothing in the config starts a release; only the flags you pass do.
+In `config/config.local.yaml`, set `graph_version` to this rollout's `YYYYMMDD`. It's optional, and without it `--build` uses the latest release, but a rollout should pin it: otherwise rerunning a failed build after a new release would start a new build instead. Nothing in the config starts a release; only the flags you pass do.
 
 ### 2b. See the plan
 
@@ -623,7 +613,7 @@ If the new build misbehaves after rollout:
 
 ```
     Tier0 graph                Babel sqlite              PubMed mirror        DrugBank
-    (by hand)                  (stitch-proj release)     (NCBI FTP)           (webhost)
+    (fetched)                  (stitch-proj release)     (NCBI FTP)           (webhost)
          │                          │                         │                   │
          ├──────────────► autocomplete                        │                   │
          ├──────────────► tier0-info-for-overlay              │                   │
@@ -724,8 +714,9 @@ Shared settings are in `config/config.yaml`. Everything machine- and person-spec
 
 | Key | Meaning | Example |
 |---|---|---|
+| `graph_releases` | where Tier0 releases are downloaded from | `https://kgx-storage.ci.transltr.io/releases/translator_kg` |
 | `graph_root` | Tier0 graphs, one `YYYYMMDD/` each | `/data/translator_kg` |
-| `graph_version` | the graph to build; required | `"20260928"` |
+| `graph_version` | the graph to build, as `YYYYMMDD`; unset means the latest release | `"20260928"` |
 | `babel_dir` | Babel sqlites, `babel-YYYYMMDD[-pN].sqlite` | `/data/babel` |
 | `babel_releases` | GitHub repo the Babel sqlites are released from | `Translator-CATRAX/stitch-proj` |
 | `pubmed_dir` | PubMed mirror root | `/data/pubmed` |
@@ -798,11 +789,11 @@ Nothing in the config starts a release. Passing a flag to `./autobuild` is what 
 
 ## Reference: autobuild inputs
 
-Only the graph is placed by hand. The Babel and Biolink versions are **derived from the graph's metadata**, so they always match it. DrugBank and PubMed are independent of the graph: DrugBank is pinned or the newest available, and PubMed is whatever NCBI has when the build directory's mirror step runs. The choices are printed every time Snakemake starts. The build report records the graph, Babel version (not the patch), Biolink version and PubMed baseline; record the rest yourself ([2e](#2e-review-the-build-report)).
+The Babel and Biolink versions are **derived from the graph's metadata**, so they always match it. DrugBank and PubMed are independent of the graph: DrugBank is pinned or the newest available, and PubMed is whatever NCBI has when the build directory's mirror step runs. The choices are printed every time Snakemake starts. The build report records the graph, Babel version (not the patch), Biolink version and PubMed baseline; record the rest yourself ([2e](#2e-review-the-build-report)).
 
 | Input | Chosen by | Fetched automatically? |
 |---|---|---|
-| Tier0 graph | `graph_version` | no |
+| Tier0 graph | `graph_version`, or the latest release | yes, if not local |
 | Babel | the graph's `babelVersion`, highest patch | yes, if not local |
 | Biolink | the graph's `biolinkVersion` | yes (cached) |
 | DrugBank | newest of local vs. webhost, or `drugbank_version` | yes, if not local |
@@ -810,7 +801,9 @@ Only the graph is placed by hand. The Babel and Biolink versions are **derived f
 
 ### Tier0 graph
 
-`graph_version` names the folder under `graph_root` to build. If it's unset, or the folder is missing `nodes.jsonl`, `edges.jsonl` or `graph-metadata.json`, Snakemake stops before doing anything.
+`graph_version` names the graph as `YYYYMMDD`, the date in its release's `build_date`; unset means the release the server marks as latest. A complete `{graph_root}/YYYYMMDD/` is used as it is. Otherwise `fetch_graph` checks free disk, downloads the archive with resume, checks its size, unpacks it beside the destination and moves the three files in. The server publishes no checksums, so a damaged archive is only caught by its size or by failing to unpack. The files are `protected`, and nothing is overwritten. If the server can't be reached, an unset `graph_version` falls back to the newest complete local graph with a warning.
+
+`--stage`, `--pr` and `--record` without `--build` use the newest build in `output_root` when `graph_version` is unset, so a new release can't redirect them.
 
 ### Babel
 
@@ -856,6 +849,7 @@ Steps 1–8 are rules in `workflow/rules/`. Paths are relative to `{output_root}
 
 | # | Rule | File | Does | Output |
 |---|---|---|---|---|
+| 1 | `fetch_graph` | `sources.smk` | download the Tier0 graph (only if not local) | `{graph_root}/YYYYMMDD/` |
 | 1 | `fetch_babel` | `sources.smk` | download Babel (only if not local) | `{babel_dir}/babel-*.sqlite` |
 | 1 | `fetch_drugbank` | `sources.smk` | download DrugBank (only if not local) | `{drugbank_dir}/drugbank-*.xml` |
 | 2 | `pubmed_mirror` | `curie_pmids.smk` | refresh the PubMed mirror | `pubmed_manifest.json` |
@@ -883,7 +877,7 @@ Snakemake rebuilds an output when an input is missing or newer, or when the rule
 
 | Change | Rebuilt |
 |---|---|
-| new Tier0 graph | everything (new build directory) |
+| new Tier0 graph (or, with `graph_version` unset, a new release) | everything (new build directory) |
 | new Babel patch | curie_to_pmids, curie_ngd, fda_approved_drugs, tests onward |
 | new DrugBank | fda_approved_drugs, tests onward |
 | new PubMed files at NCBI | nothing: the mirror is refreshed only when a build directory has no `pubmed_manifest.json` yet |
@@ -1170,7 +1164,10 @@ For an autobuild failure, find the failed rule in Snakemake's output, read its l
 |---|---|
 | `No module named 'stitch'` (or `biolink_helper_pkg`, `yaml`) | running something by hand without the venv: `source .venv/bin/activate` |
 | `Missing settings: ...` | set them in `config/config.local.yaml`; see [Configure autobuild](#configure-autobuild) |
-| `Graph ... is missing ...` | `graph_version` points at an incomplete directory |
+| `No release on ... was built on ...` | `graph_version` has no release; fix it, or remove it to use the latest |
+| `... already has nodes.jsonl` | an incomplete graph directory; move those files away so it can download |
+| `... needs about N GiB but ...` | not enough disk for the graph; free space and rerun, and the download resumes |
+| `Couldn't unpack ...`, `should be N bytes` | damaged graph download, already deleted; rerun |
 | `... records no babelVersion` / `biolinkVersion` | `graph-metadata.json` is wrong or truncated; download it again |
 | `Unrecognized babelVersion` | not of the form `2026jul22`; `sources/babel.py` needs updating |
 | `No ... release was built from Babel <version>` | stitch-proj has no sqlite for it yet; ask for one. A local copy in `babel_dir` doesn't get past this: GitHub is always checked, and a local file is used without a release only when GitHub can't be reached |

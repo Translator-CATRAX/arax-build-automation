@@ -50,7 +50,7 @@ The pipeline stops with a `Missing settings` error until you've filled in everyt
 Set your paths:
 
 ```yaml
-graph_root: /path/to/translator_kg     # Tier0 graphs, in YYYYMMDD/ folders; placed by hand
+graph_root: /path/to/translator_kg     # Tier0 graphs, in YYYYMMDD/ folders; downloaded if missing
 babel_dir: /path/to/babel              # Babel sqlite files; downloaded if missing
 pubmed_dir: /path/to/pubmed            # PubMed mirror; downloaded if missing
 drugbank_dir: /path/to/drugbank        # DrugBank downloads; fetched over SSH if missing
@@ -62,13 +62,17 @@ Babel is about 200 GB, and the PubMed mirror is about 70 GB. For `babel_dir` and
 
 `drugbank_dir` works the same way, but the download needs SSH access to `kg2webhost.rtx.ai` and only works if the webhost still has the pinned version. Local files are named `drugbank-YYYY-MM-DD.xml`.
 
-The Tier0 graph is the only input you must download by hand (see Usage).
+The Tier0 graph is also downloaded if it's missing: about 3.3 GB, unpacking to about 27 GB. The server publishes no checksums, so the download is checked by its size and by unpacking it.
 
-Set the graph to build, which is the name of its folder in `graph_root`. This is required:
+Choose the graph. Leave `graph_version` out to use the latest release, or set it to stay on one graph:
 
 ```yaml
 graph_version: "YYYYMMDD"
 ```
+
+The date comes from the release's `build_date`, and the graph's folder is named after it. `--stage`, `--pr` and `--record` without `--build` use your newest build, even if a newer graph has come out.
+
+**Without a pin, `--build` moves to a new build as soon as a new release appears.** That includes rerunning a build that failed, so set `graph_version` for a real rollout. The run prints a `NOTE` when this happens.
 
 The DrugBank version is pinned for everyone in `config/config.yaml`. Override it only if you mean to change it.
 
@@ -85,19 +89,7 @@ Nothing in the config starts a release. Only the flags you pass to `./autobuild`
 
 ## Usage
 
-1. Put the Tier0 graph in `{graph_root}/YYYYMMDD/` (the graph's build date) as `nodes.jsonl`, `edges.jsonl` and `graph-metadata.json`. Babel, DrugBank, PubMed and Biolink are fetched automatically. Babel and Biolink use the versions the graph was built with, DrugBank uses your pinned version, and PubMed is whatever NCBI has when the mirror step runs.
- - Find the release to download. Use `translator_kg`, not `translator_kg_open`. In the output, `release_version` is `version_you_want` below, and the date in `build_date` gives `YYYYMMDD`:
- ```bash
-curl -s https://kgx-storage.ci.transltr.io/releases/translator_kg/latest-release.json
- ```
- - The graph can be downloaded with the following command:
- ```bash
-mkdir {graph_root}/YYYYMMDD && cd {graph_root}/YYYYMMDD
-curl -LO https://kgx-storage.ci.transltr.io/releases/translator_kg/version_you_want/translator_kg.tar.zst 
-tar --zstd -xf translator_kg.tar.zst 
-rm translator_kg.tar.zst 
-ls -l                                           # should show nodes.jsonl, edges.jsonl and graph-metadata.json 
- ```
+1. Decide which graph to build: the latest release, or the date in `graph_version`. It's downloaded to `{graph_root}/YYYYMMDD/` as `nodes.jsonl`, `edges.jsonl` and `graph-metadata.json` if it isn't there. Babel, DrugBank, PubMed and Biolink are fetched automatically too. Babel and Biolink use the versions the graph was built with, DrugBank uses your pinned version, and PubMed is whatever NCBI has when the mirror step runs.
 2. Pull the latest `master` in your RTX checkout.
 3. See the plan. This changes nothing and needs no server access:
    ```bash
@@ -222,6 +214,9 @@ For example, if `curie_ngd` runs out of memory, run `./autobuild --build -c12`. 
 | A step is killed, or `MemoryError` | Killed with no error | Use fewer cores (for `curie_ngd`) or free memory (`curie_to_pmids` ignores `-c`) | `./autobuild --build -c12` |
 | Stale lock | `LockException` | Confirm no other run is active, then `./autobuild --unlock` | The same command |
 | Setting not filled in | `Missing settings: ...` | Set it in `config/config.local.yaml` | The same command |
+| Graph date has no release | `No release on ... was built on ...` | Fix `graph_version`, or remove it to use the latest | The same command |
+| Not enough disk for the graph | `... needs about N GiB but ...` | Free space | `./autobuild --build`; the download resumes |
+| Damaged graph download | `Couldn't unpack ...` or `should be N bytes` | None; the bad copy was deleted | `./autobuild --build` |
 | RTX key missing | `... is not in database_downloads of ...` | Put RTX on an up-to-date `master`; if RTX renamed the key, update `arax_config.smk`, `test_config_dbs.py` and `BUILT_KEYS` in `open_config_pr.py` | `./autobuild --build` |
 | Not enough disk for Babel | `... needs N GiB more ...` | Free space | `./autobuild --build` |
 | SSH failure | `Permission denied (publickey)` | Fix the key or alias | `./autobuild --stage` |

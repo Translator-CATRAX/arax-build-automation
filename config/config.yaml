@@ -11,6 +11,10 @@
 # Biolink likewise follows the graph.
 babel_releases: Translator-CATRAX/stitch-proj
 
+# Tier0 graph releases. The graph is downloaded to {graph_root}/YYYYMMDD/ if it
+# isn't there: the latest release, or the one graph_version names.
+graph_releases: https://kgx-storage.ci.transltr.io/releases/translator_kg
+
 # DrugBank is pulled from the webhost when it has a newer version than what is
 # local, or when nothing is local. Access is over SSH (key-based, no password).
 webhost: ubuntu@kg2webhost.rtx.ai

@@ -5,16 +5,19 @@
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(REPO / "tools"), str(REPO / "workflow" / "scripts" / "arax")]
+sys.path[:0] = [str(REPO / "tools"), str(REPO / "workflow" / "scripts" / "arax"),
+                str(REPO / "workflow" / "scripts" / "sources")]
 
 import autobuild_cli as cli  # noqa: E402
 import open_config_pr as pr  # noqa: E402
+import tier0  # noqa: E402
 
 BRANCH = "autobuild/tier0-20261018"
 TARGETS = {"arax_databases": {"host": "h", "root": "/r"},
@@ -302,3 +305,134 @@ class TestArgs:
     def test_rejected(self, argv):
         with pytest.raises(SystemExit):
             self.parse(*argv)
+
+
+def complete_graph(root: Path, version: str) -> None:
+    (root / version).mkdir(parents=True)
+    for name in tier0.GRAPH_FILES:
+        (root / version / name).write_text("{}")
+
+
+LATEST = tier0.Release("1.0.4", "20261018", "https://x/1.0.4/")
+OLD = tier0.Release("1.0.2", "20260928", "https://x/1.0.2/")
+
+
+class TestChooseGraph:
+    def test_unset_uses_latest_and_fetches(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(tier0, "latest_release", lambda _: LATEST)
+        assert tier0.resolve(tmp_path, None, "https://x") == ("20261018", LATEST)
+
+    def test_unset_uses_a_local_latest(self, tmp_path, monkeypatch):
+        complete_graph(tmp_path, "20261018")
+        monkeypatch.setattr(tier0, "latest_release", lambda _: LATEST)
+        assert tier0.resolve(tmp_path, None, "https://x") == ("20261018", None)
+
+    def test_unset_offline_falls_back_to_newest_local(self, tmp_path, monkeypatch):
+        complete_graph(tmp_path, "20260621")
+        complete_graph(tmp_path, "20260928")
+        def offline(_):
+            raise OSError("no network")
+        monkeypatch.setattr(tier0, "latest_release", offline)
+        assert tier0.resolve(tmp_path, None, "https://x") == ("20260928", None)
+
+    def test_unset_offline_with_nothing_local_stops(self, tmp_path, monkeypatch):
+        def offline(_):
+            raise OSError("no network")
+        monkeypatch.setattr(tier0, "latest_release", offline)
+        with pytest.raises(OSError):
+            tier0.resolve(tmp_path, None, "https://x")
+
+    def test_pinned_local_needs_no_network(self, tmp_path, monkeypatch):
+        complete_graph(tmp_path, "20260928")
+        monkeypatch.setattr(tier0, "_get", lambda _: pytest.fail("no network needed"))
+        assert tier0.resolve(tmp_path, 20260928, "https://x") == ("20260928", None)
+
+    def test_pinned_missing_is_found_by_date(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(tier0, "find_release", lambda url, version: OLD)
+        assert tier0.resolve(tmp_path, "20260928", "https://x") == ("20260928", OLD)
+
+    def test_placeholder_is_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="YYYYMMDD"):
+            tier0.resolve(tmp_path, "YYYYMMDD", "https://x")
+
+    def test_incomplete_local_is_not_used(self, tmp_path, monkeypatch):
+        (tmp_path / "20261018").mkdir()
+        monkeypatch.setattr(tier0, "latest_release", lambda _: LATEST)
+        assert tier0.resolve(tmp_path, None, "https://x")[1] == LATEST
+
+    def test_release_folders_newest_first(self):
+        html = """<a href="/r/1.0.2/"><a href="/r/1.0.10/"><a href="/r/latest/"><a href="/docs"><a href="/r/2026_06_21/">"""
+        folders = tier0._release_folders(html)
+        assert folders.index("1.0.10") < folders.index("1.0.2") and "latest" not in folders
+
+    def test_release_date_comes_from_build_date(self):
+        metadata = {"build_date": "2026-10-18T03:31:53Z"}
+        assert tier0._release_from_metadata(metadata, "1.0.4", "u").version == "20261018"
+
+
+class TestChooseVersion:
+    def config(self, tmp_path, **extra):
+        return {"output_root": str(tmp_path / "out"), "graph_root": str(tmp_path / "g"),
+                "graph_releases": "https://x", **extra}
+
+    def built(self, tmp_path, version):
+        (tmp_path / "out" / version).mkdir(parents=True)
+        (tmp_path / "out" / version / "build_report.md").write_text("x")
+
+    def test_release_only_stays_on_the_newest_build(self, tmp_path, monkeypatch):
+        self.built(tmp_path, "20260928")
+        monkeypatch.setattr(tier0, "latest_release", lambda _: LATEST)
+        assert cli.choose_version(self.config(tmp_path), builds=False) == "20260928"
+
+    def test_build_moves_to_latest(self, tmp_path, monkeypatch, capsys):
+        self.built(tmp_path, "20260928")
+        monkeypatch.setattr(tier0, "latest_release", lambda _: LATEST)
+        assert cli.choose_version(self.config(tmp_path), builds=True) == "20261018"
+        assert "new build" in capsys.readouterr().out
+
+    def test_pin_always_wins(self, tmp_path, monkeypatch):
+        self.built(tmp_path, "20261018")
+        monkeypatch.setattr(tier0, "find_release", lambda url, version: OLD)
+        assert cli.choose_version(self.config(tmp_path, graph_version="20260928"), builds=False) == "20260928"
+
+
+class TestFetch:
+    @pytest.fixture
+    def release(self, tmp_path):
+        """A real archive, served over file://."""
+        source = tmp_path / "src"
+        source.mkdir()
+        for name in tier0.GRAPH_FILES:
+            (source / name).write_text(f"contents of {name}")
+        served = tmp_path / "served"
+        served.mkdir()
+        subprocess.run(["tar", "--zstd", "-cf", str(served / tier0.ARCHIVE), "-C", str(source),
+                        *tier0.GRAPH_FILES], check=True)
+        return served
+
+    def test_downloads_and_unpacks(self, release, tmp_path):
+        dest = tmp_path / "g" / "20261018"
+        tier0.fetch(f"file://{release}", dest)
+        assert sorted(p.name for p in dest.iterdir()) == sorted(tier0.GRAPH_FILES)
+        assert not list((tmp_path / "g").glob(".*"))
+
+    def test_never_overwrites(self, release, tmp_path):
+        dest = tmp_path / "g" / "20261018"
+        dest.mkdir(parents=True)
+        (dest / "nodes.jsonl").write_text("mine")
+        with pytest.raises(RuntimeError, match="already has"):
+            tier0.fetch(f"file://{release}", dest)
+        assert (dest / "nodes.jsonl").read_text() == "mine"
+
+    def test_damaged_archive_is_deleted(self, release, tmp_path):
+        (release / tier0.ARCHIVE).write_bytes(b"not an archive")
+        dest = tmp_path / "g" / "20261018"
+        with pytest.raises(RuntimeError, match="Couldn't unpack"):
+            tier0.fetch(f"file://{release}", dest)
+        assert not (dest / "nodes.jsonl").exists()
+        assert not (dest.with_name(".20261018.download") / tier0.ARCHIVE).exists()
+
+    def test_not_enough_disk(self, release, tmp_path, monkeypatch):
+        monkeypatch.setattr(tier0.shutil, "disk_usage", lambda _: type("U", (), {"free": 0})())
+        with pytest.raises(RuntimeError, match="GiB free"):
+            tier0.fetch(f"file://{release}", tmp_path / "g" / "20261018")
