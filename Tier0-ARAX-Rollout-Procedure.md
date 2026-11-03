@@ -54,7 +54,7 @@ Don't start a phase until the previous one's gate is met. Record the evidence in
 | Phase | Done when | Evidence to record | Stop if |
 |---|---|---|---|
 | 1 | graph unpacked; PSU has the stamp; pre-flight checks pass | release version, `YYYYMMDD`, xDTD rebuild/refresh decision | a pre-flight check fails |
-| 2 | `snakemake` finished 100%; build reviewed ([2e](#2e-review-the-build-report)) | PR link; build report link; inputs not in the report (Babel file, DrugBank version, RTX template commit); curie_to_pmids error counts; FDA set comparison | a test failed; parse or resolve errors unexplained; a count dropped without explanation |
+| 2 | `./autobuild --full` finished; build reviewed ([2e](#2e-review-the-build-report)) | PR link; build report link; inputs not in the report (Babel file, DrugBank version, RTX template commit); curie_to_pmids error counts; FDA set comparison | a test failed; parse or resolve errors unexplained; a count dropped without explanation |
 | 3 | xDTD on all four servers, checksums match PSU's | PSU's md5; md5 on each server | any checksum mismatch |
 | 4 | every [4a](#4a-database-paths)–[4c](#4c-generate-db-symlinkssh) item done and pushed | commit SHA of the branch head | FDA set changed but no new filename |
 | 5 | CI, dev machine and `/test` all pass **on one commit** | that commit SHA; CI run link; test summaries | any failure on the recorded commit |
@@ -184,21 +184,27 @@ git clone git@github.com:RTXteam/RTX.git
 curl -LsSf https://astral.sh/uv/install.sh | sh     # if uv isn't installed
 cd arax-build-automation
 uv sync
-export PATH=$PWD/.venv/bin:$PATH
 gh auth login
 ```
 
 `uv sync` creates `.venv/` with the versions pinned in `uv.lock`: snakemake, stitch-proj (local Babel lookups), biolink-helper-pkg, numpy, lxml, pyyaml and pytest.
 
-**Keep `.venv/bin` first on PATH** whenever you work in the repo. Every rule runs its script with bare `python`; the Snakefile prepends the directory of the Python running Snakemake, so a Snakemake from `.venv` runs the scripts with `.venv`'s Python. A system `snakemake` fails with `No module named 'stitch'`.
+`./autobuild` runs itself with that venv, so there's nothing to activate. To run `pytest`, `snakemake` or a script by hand, first `source .venv/bin/activate`; every rule runs its script with bare `python`, and a system `snakemake` fails with `No module named 'stitch'`.
 
 ### Configure autobuild
 
-Edit `config/config.yaml` (every key is described in [Reference: autobuild configuration](#reference-autobuild-configuration)). For a new machine or person, set at least:
+Shared settings are in `config/config.yaml`. Yours go in `config/config.local.yaml`, which git ignores and which overrides the shared file key by key (every key is described in [Reference: autobuild configuration](#reference-autobuild-configuration)):
+
+```bash
+cp config/config.local.example.yaml config/config.local.yaml
+```
+
+autobuild stops with a `Missing settings` error until these are set:
 
 - `graph_root`, `babel_dir`, `pubmed_dir`, `drugbank_dir`, `output_root`: local directories
 - `rtx_config_dbs`: your RTX checkout's `code/config_dbs.json`
-- `staging.targets.itrb_sftp.host`: your own `team-expander-USERNAME@sftp.transltr.io`
+- `graph_version`: the graph to build
+- `staging.targets.itrb_sftp.host`: your own `team-expander-USERNAME@sftp.transltr.io` (only when staging)
 
 Examples on this page use these paths; substitute your own:
 
@@ -276,38 +282,27 @@ curie_ngd is now built by autobuild, so PSU (previously @mohsenht) no longer nee
 
 All commands run from the arax-build-automation checkout with `.venv/bin` on PATH.
 
-### 2a. Set the release switches
+### 2a. Set the graph version
 
-In `config/config.yaml`, for a normal rollout all three release steps are on and real. Set these keys inside the existing blocks (don't paste this over them; each block has other keys):
+In `config/config.local.yaml`, set `graph_version` to this rollout's `YYYYMMDD`. Nothing in the config starts a release; only the flags you pass do.
 
-```
-staging.enabled: true        staging.upload: true
-rtx_pr.enabled: true         rtx_pr.push: true
-build_record.enabled: true   build_record.push: true
-```
-
-Also uncomment `graph_version` and set it to this rollout's `YYYYMMDD`. Otherwise a graph placed in `graph_root` later would be picked up by any rerun. Comment it out again in Phase 8.
-
-See [Release switches](#release-switches) for rehearsals and build-only runs.
-
-### 2b. Dry run
+### 2b. See the plan
 
 ```bash
-snakemake -n
+./autobuild                     # the build plan; needs no server access
+./autobuild --rehearse --full   # also checks every server and shows the PR diff; takes several minutes
 ```
 
-Nothing runs. Check:
+Nothing changes. Check:
 
 - the versions it picked, printed at the top:
   ```
   Tier0: using 20260928 from /data/translator_kg/20260928
   Babel: using 2026jul22 from /data/babel/babel-20260722.sqlite
   Biolink: 4.4.4
-  DrugBank: using 2023-01-04 from local
   ```
-  The DrugBank line appears only when `drugbank_version` is not pinned; with a pin (as in the current config) the pinned version is used silently.
 - whether it says it will download Babel or DrugBank
-- the job list. A full build ends with `stage_target`, `stage_sftp`, `rtx_config_pr`, `record_build` and `push_build_record`.
+- that every server is reachable and has room
 
 ### 2c. Run it
 
@@ -315,20 +310,19 @@ In tmux, so it survives a dropped connection:
 
 ```bash
 tmux new -s autobuild
-export PATH=$PWD/.venv/bin:$PATH
-set -o pipefail      # so the exit status is Snakemake's, not tee's
-snakemake -c24 2>&1 | tee ~/autobuild-run.log; echo "exit status: $?"
+set -o pipefail      # so the exit status is autobuild's, not tee's
+./autobuild --full 2>&1 | tee ~/autobuild-run.log; echo "exit status: $?"
 ```
 
-`-c24` is the number of cores Snakemake schedules with (curie_to_pmids ignores it; see [the autobuild machine](#the-autobuild-machine)). `Ctrl-b d` detaches; `tmux attach -t autobuild` reattaches.
+It asks before starting, and stops at the first failure. To release in steps instead, use `--build`, then `--stage`, `--pr` and `--record`. `-c24` limits the cores Snakemake schedules with (the default is all; curie_to_pmids ignores it; see [the autobuild machine](#the-autobuild-machine)). `Ctrl-b d` detaches; `tmux attach -t autobuild` reattaches.
 
-Watch progress with `tail -f ~/autobuild-run.log` (Snakemake prints `12 of 23 steps (52%) done`). Most steps write their own log in `/data/arax_databases/YYYYMMDD/logs/`, named after the file they write (`md5` and `record_build` have none; their output goes to Snakemake's).
+Watch progress with `tail -f ~/autobuild-run.log`. Most steps write their own log in `/data/arax_databases/YYYYMMDD/logs/`, named after the file they write (`md5` has none; its output goes to Snakemake's).
 
 If it fails, read the failed step's log, fix the cause and rerun the same command; finished steps are not redone. See [Troubleshooting](#troubleshooting).
 
 ### 2d. What it did
 
-When it finishes (`N of N steps (100%) done`):
+When it finishes:
 
 - the five artifacts are built and tested in `/data/arax_databases/YYYYMMDD/`
 - they're staged and verified in `tier0-YYYYMMDD/` on `arax-databases.rtx.ai`, `cicd.rtx.ai`, `arax.ncats.io` and `sftp.transltr.io` (with md5 files on SFTP)
@@ -392,7 +386,7 @@ PSU uploads it to `/home/rtxconfig/tier0-YYYYMMDD/` on `arax-databases.rtx.ai`, 
 
 Copy it from arax-databases to `cicd.rtx.ai`, `arax.ncats.io` and `sftp.transltr.io`, with the same commands as for any single artifact ([Stage a single file by hand](#stage-a-single-file-by-hand)).
 
-- **On SFTP, upload xDTD only after autobuild's `itrb_sftp` staging has finished.** autobuild's SFTP step stops if the release directory holds any file it didn't put there, so an xDTD uploaded first would block it.
+- **Staging order doesn't matter:** `autobuild --stage` only checks its own files, so xDTD can go up before or after it.
 - **Ask PSU for the md5 of the file as they built it**, and record it in the rollout issue. Check every copy against that value (arax-databases, cicd, arax.ncats.io, and your local download), not against a hash of your own download: hashing a copy can't tell you the copy is corrupt.
 - **Upload an md5 file for it too**, in `md5_sums/tier0-YYYYMMDD/`, uploaded after the database. Without a correct md5, ITRB's image build fails and the pod crash-loops.
 
@@ -402,7 +396,7 @@ md5sum ExplainableDTD_v1.0_tier0-YYYYMMDD-all_with_paths.db     # must equal PSU
 md5sum ExplainableDTD_v1.0_tier0-YYYYMMDD-all_with_paths.db > ExplainableDTD_v1.0_tier0-YYYYMMDD-all_with_paths.db.md5
 ```
 
-Uploading xDTD to the SFTP release directory means any later autobuild SFTP staging run for this build will stop ([SFTP behavior](#the-itrb-sftp-drop-araxstage_sftppy)). That's fine once `staged/itrb_sftp.json` exists, since Snakemake won't rerun it.
+Files already in the SFTP release directory, such as xDTD, don't affect `autobuild --stage`: it only checks the files it's uploading.
 
 ### 3d. Point config_dbs.json at it
 
@@ -419,7 +413,7 @@ Update `explainable_dtd_db` in `code/config_dbs.json` on the PR branch ([Phase 4
 
 autobuild's PR changes only `code/config_dbs.json`. Everything else goes on the same branch, so it's reviewed and merged together.
 
-**Do this in a separate RTX clone, not the checkout `rtx_config_dbs` points at.** That checkout's `config_dbs.json` is an input to the build: switching it to the autobuild branch or editing it makes any later `snakemake` run for this build regenerate `config_dbs.json`, rerun the report and the PR step, and fail with `An autobuild PR is still open` or `Branch autobuild/tier0-... already exists`.
+**Do this in a separate RTX clone, not the checkout `rtx_config_dbs` points at.** That checkout's `config_dbs.json` is an input to the build, so switching it to the autobuild branch or editing it would change what a later `--build` writes.
 
 ```bash
 git clone git@github.com:RTXteam/RTX.git ~/RTX-rollout     # once
@@ -577,7 +571,6 @@ autobuild and RTX don't deploy to ITRB. Before Phase 6, get the **current** depl
 
 - [ ] Add an entry for this rollout to the current RTX changelog issue: date, Tier0 stamp, what changed (the build report's Counts section is a good summary).
 - [ ] Delete `autobuild/tier0-YYYYMMDD` in RTX once it's merged **and** no CI run, preview container or endpoint is still building from it (check the Actions tab and `docker ps` on cicd).
-- [ ] Comment out `graph_version` in autobuild's config again (set in 2a).
 - [ ] After a week of stability, move the last legacy endpoint to the new build.
 - [ ] After a week of stability, delete the previous Tier0 release directory on `arax-databases.rtx.ai` and `arax.ncats.io` to reclaim disk, **only after a reference check**:
   - no endpoint in the inventory, preview container or CI branch still runs a commit whose `config_dbs.json` names that directory (check each one's `code/config_dbs.json`)
@@ -725,14 +718,14 @@ One per artifact, in `md5sum` format (hash, two spaces, bare filename), so `md5s
 
 ## Reference: autobuild configuration
 
-Everything machine- and person-specific is in `config/config.yaml`.
+Shared settings are in `config/config.yaml`. Everything machine- and person-specific is in `config/config.local.yaml`, which isn't tracked and overrides the shared file key by key; start from `config/config.local.example.yaml`.
 
 ### Paths and inputs
 
 | Key | Meaning | Example |
 |---|---|---|
 | `graph_root` | Tier0 graphs, one `YYYYMMDD/` each | `/data/translator_kg` |
-| `graph_version` | build this graph instead of the newest; normally commented out | `"20260928"` |
+| `graph_version` | the graph to build; required | `"20260928"` |
 | `babel_dir` | Babel sqlites, `babel-YYYYMMDD[-pN].sqlite` | `/data/babel` |
 | `babel_releases` | GitHub repo the Babel sqlites are released from | `Translator-CATRAX/stitch-proj` |
 | `pubmed_dir` | PubMed mirror root | `/data/pubmed` |
@@ -748,8 +741,6 @@ Everything machine- and person-specific is in `config/config.yaml`.
 
 | Key | Meaning |
 |---|---|
-| `staging.enabled` | stage as part of a normal build |
-| `staging.upload` | `false` = dry run on every target: check and report, upload nothing |
 | `staging.targets.<name>` | one block per target; the name becomes `staged/<name>.json` and `logs/staged_<name>.log` |
 
 SSH targets (`arax_databases`, `cicd`, `arax_ncats`):
@@ -777,8 +768,6 @@ SFTP targets (`itrb_sftp`):
 
 | Key | Meaning |
 |---|---|
-| `enabled` | open the PR as part of a normal build |
-| `push` | `false` = dry run: clone RTX, print the diff and the PR, push nothing |
 | `repo` | GitHub repo for `gh` (`RTXTeam/RTX`) |
 | `remote` | git URL to clone and push (`git@github.com:RTXTeam/RTX`) |
 | `base` | branch the PR targets (`master`) |
@@ -788,23 +777,22 @@ SFTP targets (`itrb_sftp`):
 
 | Key | Meaning |
 |---|---|
-| `enabled` | commit and push `builds/YYYYMMDD/` as part of a normal build |
-| `push` | `false` = dry run: report what it would commit |
 | `remote` | remote to push to (`origin`) |
 | `branch` | branch to push (`master`) |
 
-### Release switches
+### Release flags
 
-Building, testing, md5s, `config_dbs.json`, the report and `record_build` always run. `record_build` copies the record into `builds/YYYYMMDD/` in the checkout, so even a build-only run or a rehearsal leaves an uncommitted `builds/YYYYMMDD/` there (a rehearsal's says it was a dry run); `build_record.enabled` controls only committing and pushing it. The switches control the rest:
+Nothing in the config starts a release. Passing a flag to `./autobuild` is what authorizes that action:
 
-| Goal | `staging` | `rtx_pr` | `build_record` |
-|---|---|---|---|
-| Full rollout (normal) | `enabled: true`, `upload: true` | `enabled: true`, `push: true` | `enabled: true`, `push: true` |
-| Build and test only | `enabled: false` | `enabled: false` | `enabled: false` |
-| Rehearse the release | `enabled: true`, `upload: false` | `enabled: true`, `push: false` | `enabled: false` |
+| Goal | Command |
+|---|---|
+| Full rollout | `./autobuild --full` |
+| Build and test only | `./autobuild --build` |
+| Rehearse the release | `./autobuild --rehearse --full` |
+| One step | `./autobuild --stage`, `--pr` or `--record` |
 
-- `push_build_record` needs real staging results and a real PR, so enabling `build_record` also runs staging and the PR step, and it **stops** if either was a dry run. Leave it off in a rehearsal.
-- The PR step checks the files are on `arax_databases`, so in a rehearsal it stops unless the build was already staged for real.
+- `--record` stops unless every server is staged and there's a PR.
+- `--pr` stops unless every artifact is on `arax_databases`. A rehearsal reports that instead of stopping.
 
 ---
 
@@ -814,7 +802,7 @@ Only the graph is placed by hand. The Babel and Biolink versions are **derived f
 
 | Input | Chosen by | Fetched automatically? |
 |---|---|---|
-| Tier0 graph | newest complete `YYYYMMDD/` in `graph_root`, or `graph_version` | no |
+| Tier0 graph | `graph_version` | no |
 | Babel | the graph's `babelVersion`, highest patch | yes, if not local |
 | Biolink | the graph's `biolinkVersion` | yes (cached) |
 | DrugBank | newest of local vs. webhost, or `drugbank_version` | yes, if not local |
@@ -822,7 +810,7 @@ Only the graph is placed by hand. The Babel and Biolink versions are **derived f
 
 ### Tier0 graph
 
-Directories under `graph_root` named with 8 digits that contain `nodes.jsonl`, `edges.jsonl` and `graph-metadata.json` are candidates; the newest is built unless `graph_version` pins another. If none is complete, Snakemake stops before doing anything.
+`graph_version` names the folder under `graph_root` to build. If it's unset, or the folder is missing `nodes.jsonl`, `edges.jsonl` or `graph-metadata.json`, Snakemake stops before doing anything.
 
 ### Babel
 
@@ -864,7 +852,7 @@ python workflow/scripts/curie_pmids/mirror_pubmed.py --dest /data/pubmed --check
 
 ## Reference: autobuild steps
 
-Each step is a rule in `workflow/rules/`. Paths are relative to `{output_root}/YYYYMMDD/`. Artifact rules write `logs/<artifact>.log` and `benchmarks/<artifact>.tsv` (time and memory).
+Steps 1–8 are rules in `workflow/rules/`. Paths are relative to `{output_root}/YYYYMMDD/`. Artifact rules write `logs/<artifact>.log` and `benchmarks/<artifact>.tsv` (time and memory).
 
 | # | Rule | File | Does | Output |
 |---|---|---|---|---|
@@ -881,13 +869,11 @@ Each step is a rule in `workflow/rules/`. Paths are relative to `{output_root}/Y
 | 7 | `arax_config_dbs` | `arax_config.smk` | write the new `config_dbs.json` | `config_dbs.json` |
 | 7 | `test_config_dbs` | `report.smk` | pytest against it | `test_results/config_dbs.xml` |
 | 8 | `report` | `report.smk` | report and counts | `build_report.md`, `artifact_stats.json` |
-| 9 | `stage_target` | `stage.smk` | stage on one SSH target | `staged/<target>.json` |
-| 9 | `stage_sftp` | `stage.smk` | stage on the ITRB drop | `staged/itrb_sftp.json` |
-| 10 | `rtx_config_pr` | `rtx_pr.smk` | open the RTX PR | `rtx_pr.json` |
-| 11 | `record_build` | `record.smk` | copy the record into the repo | `builds/YYYYMMDD/` |
-| 11 | `push_build_record` | `record.smk` | commit and push the record | `record_pushed.json` |
+| 9 | `--stage` | `tools/stage_artifacts.py` | stage on each target | `staged/<target>.json` |
+| 10 | `--pr` | `arax/open_config_pr.py` | open or update the RTX PR | `rtx_pr.json` |
+| 11 | `--record` | `report/record_build.py`, `report/push_build_record.py` | copy the record into the repo, then commit and push it | `builds/YYYYMMDD/`, `record_pushed.json` |
 
-`stage` is a convenience target for all staging targets. Scratch files go in `work/` and are deleted by the rules that make them.
+Steps 9–11 aren't Snakemake rules: `./autobuild` runs them only when asked. Scratch files go in `work/` and are deleted by the rules that make them.
 
 **`arax_config_dbs`** (`arax/update_config_dbs.py`) copies `rtx_config_dbs` and sets six `database_downloads` entries to `{arax_db_root}/tier0-YYYYMMDD/<file>`: `tier0_sqlite` and `kg2c_sqlite` (tier0-info-for-overlay), `autocomplete`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs`. Every other entry is copied unchanged, with RTX's 3-space indent to keep the diff small. It fails if one of those keys isn't in the template.
 
@@ -905,7 +891,7 @@ Snakemake rebuilds an output when an input is missing or newer, or when the rule
 | a test edited | tests onward |
 | RTX's `config_dbs.json` changed | `config_dbs.json`, its test, report onward |
 
-"Onward" includes staging and the PR step. Once a build's PR is open, any of these makes the next `snakemake` run for that build fail at the PR step (`An autobuild PR is still open` or `Branch ... already exists`); after an artifact change it stops even earlier, at staging. So once a build is released, don't edit its inputs (including the `rtx_config_dbs` checkout; see [Phase 4](#phase-4-integration-on-the-autobuild-branch)) and rerun Snakemake for it.
+"Onward" stops at the report: staging and the PR only happen when asked for. Once a build is staged or proposed, `./autobuild --build` won't rebuild it; name an artifact to build it as a new version ([Rebuild one artifact](#rebuild-one-artifact)).
 
 ---
 
@@ -929,7 +915,8 @@ Snakemake rebuilds an output when an input is missing or newer, or when the rule
 ├── staged/<target>.json       one per staging target
 ├── rtx_pr.json                the PR's branch and URL
 ├── record_pushed.json         the record push result
-├── logs/                      one per step (except md5 and record_build)
+├── vX.Y/                      a rebuilt artifact, with its own md5_sums/, logs/, config_dbs.json
+├── logs/                      one per step (except md5)
 └── benchmarks/                time and memory per artifact step
 ```
 
@@ -954,14 +941,11 @@ The previous build is the newest older `builds/YYYYMMDD/` with an `artifact_stat
 |---|---|---|
 | `staged/<target>.json` | `{"staged": true, "location", "already_staged": false}` | uploaded and verified this run |
 | | `{"staged": true, "location", "already_staged": true}` | already there; verified; nothing uploaded |
-| | `{"staged": false, "dry_run": true, "location"}` | dry run |
-| `rtx_pr.json` | `{"dry_run": false, "branch", "url"}` | PR opened |
-| | `{"dry_run": true, "branch"}` | dry run |
+| `rtx_pr.json` | `{"dry_run": false, "branch", "url"}` | PR opened or updated |
 | `record_pushed.json` | `{"committed": true, "commit"}` | pushed |
 | | `{"committed": false}` | already committed |
-| | `{"dry_run": true}` | dry run |
 
-These are Snakemake outputs, so **a dry-run result counts as done**. See [Go from a dry run to a real release](#go-from-a-dry-run-to-a-real-release).
+A rehearsal writes none of these. A server's result is only written once it has every artifact, because `--record` relies on it.
 
 ---
 
@@ -1000,46 +984,54 @@ python -m pytest tests/test_config_dbs.py -p no:cacheprovider \
 
 Staging means putting the tested artifacts on every server **before** anything points at them: once master's `config_dbs.json` points at `tier0-YYYYMMDD`, every ARAX instance and ITRB image goes looking for them.
 
-### SSH targets (`arax/stage_databases.py`)
+### SSH targets (`tools/stage_artifacts.py`)
 
-1. Checks the local artifacts against their md5 files.
-2. If `{root}/tier0-YYYYMMDD` exists: if it has these files with these md5s, success with nothing uploaded; otherwise **stop**. A release directory is never overwritten. (Other files in it, such as xDTD, are ignored.)
-3. Checks `read_check` works, if set, and that there's room for the files plus 10 GB.
-4. With `upload: false`, reports and stops.
-5. Creates `{root}/.staging-tier0-YYYYMMDD/` (with `sudo -n` if `sudo: true`), owned by the SSH user, mode `dir_mode`. One left by an interrupted run is resumed.
-6. Uploads with `rsync --partial`, or `scp` if the server has no rsync. Files are mode 644.
-7. Checks every md5 on the server, renames the directory into place with `mv -T` (so the release directory never holds partial files), and checks the md5s and read access again.
+1. Checks the local artifacts against their md5 files. Anything that hasn't passed its tests is reported as missing, and you choose whether to build it, stage the rest, or cancel.
+2. Compares with `{root}/tier0-YYYYMMDD`: files already there with the right md5 are skipped. **A file there with a different md5 stops it**; nothing is overwritten. Other files, such as xDTD, are ignored.
+3. Checks there's room for the files plus 10 GB.
+4. With `--rehearse`, reports and stops.
+5. Creates `{root}/tier0-YYYYMMDD/` and `{root}/.staging-tier0-YYYYMMDD-files/` (with `sudo -n` if `sudo: true`), owned by the SSH user, mode `dir_mode`.
+6. Uploads to the hidden directory with `rsync --partial`, or `scp` if the server has no rsync. Files are mode 644.
+7. Checks every md5 on the server, moves each file into place with `mv -n`, and checks the md5s and read access again.
 
 Nothing on any server is ever deleted.
 
-### The ITRB SFTP drop (`arax/stage_sftp.py`)
+### The ITRB SFTP drop (`tools/stage_artifacts.py`)
 
 No shell, so checks are by size only. A matching size doesn't prove matching contents; the md5 files are what ITRB checks contents against.
 
 1. Lists `databases/tier0-YYYYMMDD/` and `md5_sums/tier0-YYYYMMDD/`.
-2. Exactly these files at the right sizes: success. Some of them, all at the right sizes (a run interrupted between files): uploads the rest. **Anything else, or a wrong size, stops it**, including a file cut short by an interrupted upload (it isn't resumed or replaced) and any file added by hand, such as xDTD or a `v1.1` patch. To recover from a partial file, have the file removed from the drop (ITRB, or `rm` in `sftp` if your account allows it) and rerun.
-3. With `upload: false`, prints the plan and stops.
+2. Files already there at the right size are skipped. **A file there at the wrong size stops it**, including one cut short by an interrupted upload (it isn't resumed or replaced). To recover, have the file removed from the drop (ITRB, or `rm` in `sftp` if your account allows it) and rerun. Other files, such as xDTD, are ignored.
+3. With `--rehearse`, prints the plan and stops.
 4. Uploads the artifacts first and the md5 files last, so a release whose md5 files are all present is complete.
-5. Checks both directories hold exactly the expected files at the expected sizes.
+5. Checks the uploaded files' sizes.
 
 ### The RTX PR (`arax/open_config_pr.py`)
 
 1. Refuses branch names `master`, `main`, `production`, `itrb-test`, `dev`, and a base equal to the branch.
-2. **Stops** if any `autobuild/` PR is open into the base (one at a time), or if this build's branch already exists.
-3. **Stops** unless every artifact is on `arax_databases` with matching md5s (the PR's CI downloads from there).
-4. Shallow-clones the base, creates `autobuild/tier0-YYYYMMDD`, writes `code/config_dbs.json`. **Stops** if nothing changed or anything else changed.
-5. With `push: false`, prints the diff and the PR and stops.
-6. Commits only that file as "ARAX autobuild pipeline" (with your `git config user.email`), pushes the new branch by explicit refspec (never forced), and opens the PR. The body says it's for human review, where the files are staged, the diff, and the full build report.
+2. Looks up every autobuild PR. **Stops** if another build's is open (one build at a time).
+3. **Stops** unless every artifact is on `arax_databases` with matching md5s (the PR's CI downloads from there). A rehearsal reports this instead.
+4. Decides what to do from this build's PRs, on `autobuild/tier0-YYYYMMDD` and any `-update-N` branches:
+
+   | State | What it does |
+   |---|---|
+   | one is open | pushes to its branch, which updates the PR; a new commit means rerunning CI and the dev-machine tests |
+   | the newest was merged | opens a new PR on the next `-update-N` branch from the base, if anything changed. **Stops** if the base is on a different Tier0. |
+   | closed unmerged, or none | opens a new PR on the first free name. **Stops** if the base is on a newer Tier0. |
+
+5. Starts from the target branch's own `code/config_dbs.json` and changes only the entries this pipeline builds, so Phase 4 changes and other work are kept. **Stops** if one of those keys is missing.
+6. With `--rehearse`, prints the diff and stops.
+7. Commits only that file as "ARAX autobuild pipeline" (with your `git config user.email`) and pushes by explicit refspec (never forced). A new PR's body says it's for human review, where the files are staged, the diff, and the build report.
 
 It never merges, approves, deploys or deletes anything.
 
 ### The build record (`report/record_build.py`, `report/push_build_record.py`)
 
-`record_build` copies `artifact_stats.json`, `config_dbs.json`, `pubmed_manifest.json`, `md5_sums/`, `test_results/`, `benchmarks/`, `logs/`, `staged/`, `rtx_pr.json`, and the report with a Release section added, into `builds/YYYYMMDD/` in arax-build-automation.
+`--record` first copies `artifact_stats.json`, `config_dbs.json`, `pubmed_manifest.json`, `md5_sums/`, `test_results/`, `benchmarks/`, `logs/`, `staged/`, `rtx_pr.json`, and the report with a Release section added, into `builds/YYYYMMDD/` in arax-build-automation. A rebuild's `vX.Y/` records go in a subdirectory, without their data files. Logins are left out of the staging results and logs, because this repo is public.
 
-`push_build_record`, the only step that writes to that repo:
+Then, the only step that writes to that repo:
 
-1. **Stops** unless staging and the PR were real (not dry runs).
+1. **Stops** unless every server is staged and there's a PR.
 2. **Stops** unless the checkout is on `build_record.branch`, and unless it has no commits that aren't on the remote. If it's behind, it fast-forwards.
 3. Does nothing if the record is already committed.
 4. Commits only `builds/YYYYMMDD/` (pathspec commit) as "ARAX autobuild pipeline", message `Build record for Tier0 build YYYYMMDD` with the PR URL, checks the commit contains nothing else, and pushes normally (never forced).
@@ -1052,155 +1044,54 @@ It never merges, approves, deploys or deletes anything.
 
 | Goal | Command |
 |---|---|
-| everything | `snakemake -c24` |
-| why each step would run | `snakemake -n` (each job lists its reason) |
-| one artifact | `snakemake -c24 /data/arax_databases/YYYYMMDD/curie_ngd_v1.0_tier0-YYYYMMDD.sqlite` |
-| artifact tests | `snakemake -c4 /data/arax_databases/YYYYMMDD/test_results/artifacts.xml` |
-| the report | `snakemake -c4 /data/arax_databases/YYYYMMDD/build_report.md` |
-| stage on every target | `snakemake -c4 stage` |
-| stage on one target | `snakemake -c1 /data/arax_databases/YYYYMMDD/staged/cicd.json` |
-| the RTX PR | `snakemake -c1 rtx_config_pr` |
-| rebuild one artifact unchanged | `snakemake -c24 --forcerun curie_ngd` |
+| see the plan | `./autobuild` |
+| everything | `./autobuild --full` |
+| build and test | `./autobuild --build` |
+| one artifact | `./autobuild --build curie_ngd` |
+| stage on every target | `./autobuild --stage` |
+| stage on some targets | `./autobuild --stage cicd arax_ncats` |
+| the RTX PR | `./autobuild --pr` |
+| the build record | `./autobuild --record` |
+| rehearse any of these | add `--rehearse` |
+| why each build step would run | `source .venv/bin/activate`, then `snakemake -n` |
 
-Asking for a file or rule by name runs it even if its `enabled` switch is off; `upload` and `push` still decide whether it's a dry run.
+### Update a build's PR
 
-### Go from a dry run to a real release
-
-Set the switches to real, delete the dry-run results and rerun:
-
-```bash
-rm /data/arax_databases/YYYYMMDD/staged/*.json /data/arax_databases/YYYYMMDD/rtx_pr.json
-snakemake -c24
-```
-
-### Re-propose a build's PR
-
-```bash
-gh pr close <PR number> -R RTXteam/RTX --delete-branch
-rm /data/arax_databases/YYYYMMDD/rtx_pr.json
-snakemake -c24
-```
-
-### Recover a half-finished PR step
-
-The PR step pushes the branch, then opens the PR. If `gh pr create` fails after the push (network, `gh` auth), a rerun stops with `Branch autobuild/tier0-... already exists`. Don't delete the branch: it holds the correct commit. Check it, then open the PR by hand and write the result file so Snakemake treats the step as done:
-
-```bash
-git fetch git@github.com:RTXTeam/RTX autobuild/tier0-YYYYMMDD
-git show --stat FETCH_HEAD          # one commit, only code/config_dbs.json
-git diff FETCH_HEAD^ FETCH_HEAD     # same diff as logs/rtx_pr.json.log
-gh pr create --repo RTXTeam/RTX --base master --head autobuild/tier0-YYYYMMDD \
-    --title "Update config_dbs.json for Tier0 build YYYYMMDD" \
-    --body-file /data/arax_databases/YYYYMMDD/build_report.md
-echo '{"dry_run": false, "branch": "autobuild/tier0-YYYYMMDD", "url": "<PR URL>"}' \
-    > /data/arax_databases/YYYYMMDD/rtx_pr.json
-snakemake -c4      # continues with the build record
-```
+Just rerun `./autobuild --pr`. It pushes to the branch of an open PR, or opens a new one if the last was closed or merged. If `gh pr create` failed after a push, the leftover branch is harmless: a rerun opens the PR from the next `-update-N` branch.
 
 ### Recover a half-finished build-record push
 
-`push_build_record` commits, then pushes. If the push fails, a rerun stops with `master has 1 commit(s) not on origin/master`. Don't drop that commit. Check it holds only the record, then push it yourself:
+`--record` commits, then pushes. If the push fails, a rerun stops with `master has 1 commit(s) not on origin/master`. Don't drop that commit. Check it holds only the record, then push it yourself:
 
 ```bash
 git log origin/master..master --stat     # one "Build record for Tier0 build YYYYMMDD" commit, only builds/YYYYMMDD/
 git push origin master
-snakemake -c4      # sees the record is committed and writes record_pushed.json
+./autobuild --record      # sees the record is committed and writes record_pushed.json
 ```
 
 ### Build an older graph
 
-Set `graph_version: "YYYYMMDD"` (its directory must be complete), run, then comment it out again.
+Set `graph_version: "YYYYMMDD"` (its directory must be complete) and run.
 
 ### Rebuild one artifact
 
-| Script changed | Rule | Also rebuilt |
-|---|---|---|
-| `autocomplete/*.py` | `autocomplete` | |
-| `overlay/generate_sqlite.py` | `overlay` | |
-| `curie_pmids/build_ngd_database.py`, `curie_pmids/extraction_script.py` | `curie_to_pmids` | curie_ngd |
-| `curie_ngd/build_curie_ngd.py` | `curie_ngd` | |
-| `fda_drugs/generate_fda_pickle.py` | `fda_drugs` | |
+**Before the build is staged:** save your change and run `./autobuild --build curie_ngd`. It rebuilds that artifact and reruns the tests onward. An edited builder script is also picked up by a plain `./autobuild --build`.
 
-**Before the build is staged:** save the change and run `snakemake -n` (only that artifact and later steps should be listed), then `snakemake -c24`.
-
-**After the build is staged: don't rerun Snakemake for it.** It would rebuild the file under the same `v1.0` name and stop at staging (the servers have a `v1.0` with a different md5). And ARAX wouldn't download a same-named file anyway. Instead, build it as the next version (`v1.1`, then `v1.2`) next to the old one, test it, write its md5, stage it by hand on all four servers, and point ARAX at it by PR. The old file stays until instances get the new `config_dbs.json`.
-
-Build (the rules' own commands with the version changed; use the Babel file and DrugBank version you recorded in [2e](#2e-review-the-build-report)). **The blocks below are alternatives: run only the one for the artifact you're rebuilding.** The tests require exactly one file of each kind in the directory, so a curie_ngd-only rebuild (which links the old curie_to_pmids) and a curie_to_pmids rebuild (which makes a new one) can't share a `v1.1/` directory.
+**After the build is staged**, its files can't change: the servers have a `v1.0` with a different md5, and ARAX wouldn't download a same-named file anyway. Run the same command, and it offers to build the next unused version in `{output_root}/YYYYMMDD/vX.Y/`, leaving the old file in place:
 
 ```bash
-mkdir /data/arax_databases/YYYYMMDD/v1.1
-
-# EITHER curie_ngd only (the link lets its tests find curie_to_pmids; it isn't staged)
-ln -s ../curie_to_pmids_v1.0_tier0-YYYYMMDD.sqlite /data/arax_databases/YYYYMMDD/v1.1/
-python workflow/scripts/curie_ngd/build_curie_ngd.py \
-    --curie-to-pmids /data/arax_databases/YYYYMMDD/curie_to_pmids_v1.0_tier0-YYYYMMDD.sqlite \
-    --nodes /data/translator_kg/YYYYMMDD/nodes.jsonl \
-    --edges /data/translator_kg/YYYYMMDD/edges.jsonl \
-    --output /data/arax_databases/YYYYMMDD/v1.1/curie_ngd_v1.1_tier0-YYYYMMDD.sqlite \
-    --workers 24
-
-# OR autocomplete
-python workflow/scripts/autocomplete/extract_names_ids.py \
-    /data/translator_kg/YYYYMMDD/nodes.jsonl /data/arax_databases/YYYYMMDD/v1.1/names.tsv
-python workflow/scripts/autocomplete/create_load_db.py \
-    -i /data/arax_databases/YYYYMMDD/v1.1/names.tsv \
-    -o /data/arax_databases/YYYYMMDD/v1.1/autocomplete_v1.1_tier0-YYYYMMDD.sqlite
-rm /data/arax_databases/YYYYMMDD/v1.1/names.tsv
-
-# OR tier0-info-for-overlay
-python workflow/scripts/overlay/generate_sqlite.py \
-    --nodes /data/translator_kg/YYYYMMDD/nodes.jsonl \
-    --edges /data/translator_kg/YYYYMMDD/edges.jsonl \
-    --graph-metadata /data/translator_kg/YYYYMMDD/graph-metadata.json \
-    --output-dir /data/arax_databases/YYYYMMDD/v1.1 \
-    --tier0-build-date YYYYMMDD --schema-version 1.1 \
-    --biolink-cache-dir /data/arax_databases/.cache/biolink
-
-# OR curie_to_pmids, then curie_ngd from it (no link; stage both; uses the PubMed mirror as it is now)
-mkdir /data/arax_databases/YYYYMMDD/v1.1/work
-python workflow/scripts/curie_pmids/build_ngd_database.py --full --skip-download \
-    --pubmed-dir /data/pubmed \
-    --babel-db /data/babel/babel-YYYYMMDD.sqlite \
-    --tier0-edges /data/translator_kg/YYYYMMDD/edges.jsonl \
-    --output-dir /data/arax_databases/YYYYMMDD/v1.1/work
-mv /data/arax_databases/YYYYMMDD/v1.1/work/curie_to_pmids.sqlite \
-   /data/arax_databases/YYYYMMDD/v1.1/curie_to_pmids_v1.1_tier0-YYYYMMDD.sqlite
-rm -r /data/arax_databases/YYYYMMDD/v1.1/work
-# ...then the curie_ngd command above, with --curie-to-pmids pointing at the v1.1 file
-
-# OR fda_approved_drugs
-python workflow/scripts/fda_drugs/generate_fda_pickle.py \
-    --drugbank_xml /data/drugbank/drugbank-YYYY-MM-DD.xml \
-    --babel_db /data/babel/babel-YYYYMMDD.sqlite \
-    --output_pickle /data/arax_databases/YYYYMMDD/v1.1/fda_approved_drugs_v1.1.pickle
+./autobuild --build curie_ngd     # asks, then builds and tests e.g. curie_ngd_v1.1_tier0-YYYYMMDD.sqlite
+./autobuild --stage               # uploads it to every server
+./autobuild --pr                  # points config_dbs.json at it, on the open PR or a new one after a merge
+./autobuild --record              # records it under builds/YYYYMMDD/v1.1/
 ```
 
-Test only the rebuilt artifact, and don't stage anything that fails. Use the test file(s) for it:
-
-| Rebuilt | Test files |
-|---|---|
-| autocomplete | `tests/test_autocomplete.py` |
-| tier0-info-for-overlay | `tests/test_overlay.py` |
-| curie_ngd only | `tests/test_curie_ngd.py` |
-| curie_to_pmids and curie_ngd | `tests/test_curie_to_pmids.py tests/test_curie_ngd.py` |
-| fda_approved_drugs | `tests/test_fda_approved_drugs.py` |
-
-For example, for curie_ngd:
-
-```bash
-python -m pytest tests/test_curie_ngd.py -p no:cacheprovider \
-    --build-dir /data/arax_databases/YYYYMMDD/v1.1 \
-    --graph-dir /data/translator_kg/YYYYMMDD \
-    --babel /data/babel/babel-YYYYMMDD.sqlite \
-    --biolink-cache-dir /data/arax_databases/.cache/biolink
-```
-
-Write its md5:
-
-```bash
-cd /data/arax_databases/YYYYMMDD/v1.1
-md5sum curie_ngd_v1.1_tier0-YYYYMMDD.sqlite > curie_ngd_v1.1_tier0-YYYYMMDD.sqlite.md5
-```
+- `--new-version` skips the question; `-y` alone won't create a version.
+- Versions are numbered across the whole build, checking both local files and `arax-databases`, so a later rebuild of another artifact gets the next number.
+- Rebuilding `curie_to_pmids` also rebuilds `curie_ngd`. Declining cancels the rebuild. It uses the PubMed mirror as it is now.
+- It only runs that artifact's tests.
+- A rebuild that fails its tests leaves its `vX.Y/` directory, and the next attempt uses the next version.
+- For `fda_approved_drugs`, or any artifact whose link line you rely on, also update `code/generate-db-symlinks.sh` by hand.
 
 ### Stage a single file by hand
 
@@ -1277,8 +1168,8 @@ For an autobuild failure, find the failed rule in Snakemake's output, read its l
 
 | Error | Cause and fix |
 |---|---|
-| `No module named 'stitch'` (or `biolink_helper_pkg`, `yaml`) | `.venv/bin` isn't first on PATH: `export PATH=$PWD/.venv/bin:$PATH` |
-| `No complete graph directory ... under ...` | the graph directory is missing a file or isn't named `YYYYMMDD` |
+| `No module named 'stitch'` (or `biolink_helper_pkg`, `yaml`) | running something by hand without the venv: `source .venv/bin/activate` |
+| `Missing settings: ...` | set them in `config/config.local.yaml`; see [Configure autobuild](#configure-autobuild) |
 | `Graph ... is missing ...` | `graph_version` points at an incomplete directory |
 | `... records no babelVersion` / `biolinkVersion` | `graph-metadata.json` is wrong or truncated; download it again |
 | `Unrecognized babelVersion` | not of the form `2026jul22`; `sources/babel.py` needs updating |
@@ -1287,25 +1178,23 @@ For an autobuild failure, find the failed rule in Snakemake's output, read its l
 | `md5 mismatch for ...; deleted the bad copy` | corrupted download; rerun |
 | `webhost DrugBank is no longer the ... release; rerun the build` | the webhost's file changed mid-run; rerun |
 | `DrugBank: no version found locally or on the webhost` | webhost unreachable and nothing local; check SSH |
-| `IncompleteFilesException` | an interrupted run; rerun with `--rerun-incomplete` |
-| `LockException` | another Snakemake is running, or a stale lock; if none is running, `snakemake --unlock` |
+| `LockException` | another Snakemake is running, or a stale lock; if none is running, `./autobuild --unlock` |
 | `ProtectedOutputException` | a rule wants to rewrite a protected download; if intended, `chmod u+w` and delete it |
 | a step killed with no error, or `MemoryError` | out of RAM. For curie_ngd, use fewer cores (`-c12`). curie_to_pmids ignores `-c` (its pools use every core but one), so for it free memory or run on a machine with more RAM per core |
-| a test failed | see `logs/test_artifacts.log`, `test_results/artifacts.xml`; nothing was staged |
-| `... is not in database_downloads of ...` | RTX renamed a key; update `arax_config.smk` and the tests |
+| a test failed | see `logs/test_artifacts.log`, `test_results/artifacts.xml`; nothing can be staged |
+| `... is not in database_downloads of ...` | RTX renamed a key; update `arax_config.smk`, `test_config_dbs.py` and `BUILT_KEYS` in `arax/open_config_pr.py` |
 | `Permission denied (publickey)`, `Host key verification failed` | SSH doesn't work non-interactively for that host; run the [checks](#ssh-setup) |
 | `sudo: a password is required` | cicd needs passwordless sudo; arax needs passwordless `sudo docker` |
-| `Local artifacts do not match their md5 files` | an artifact changed after its md5; rebuild with Snakemake |
-| `already exists with different or missing files; it is never overwritten` | a `tier0-YYYYMMDD/` from a bad attempt: if nothing uses it, remove it by hand and rerun; if it's live, see [Rebuild one artifact](#rebuild-one-artifact) |
+| `no longer matches ...` | an artifact changed after its md5; rebuild it with `./autobuild --build` |
+| `already has different copies of: ...` | a `tier0-YYYYMMDD/` from a bad attempt: if nothing uses it, remove the files by hand and rerun; if it's live, see [Rebuild one artifact](#rebuild-one-artifact) |
 | `Only N GB free on ...` | the server is short of space; see Phase 1d |
 | `md5 mismatch after upload` | corrupted upload; rerun (the staging directory resumes) |
 | `Not readable through ...` | ARAX's user can't read the files on arax.ncats.io; check permissions |
-| `... already holds other files ... or files of the wrong size` (SFTP) | a conflicting file, often xDTD uploaded before autobuild's staging (see [3c](#3c-copy-to-the-other-servers-osu)); have it removed and rerun, then upload xDTD after |
-| `An autobuild PR is still open` | one at a time; merge or close it |
-| `Branch autobuild/tier0-... already exists` | delete it on GitHub to propose again |
-| `Not staged on ... with matching md5s` | stage for real first: `snakemake -c4 stage` with `upload: true` |
+| `... already exists at a different size` (SFTP) | a partial upload or conflicting file; have it removed and rerun |
+| `Another build's autobuild PR is still open` | one build at a time; merge or close it |
+| `Not staged on ... with matching md5s` | stage first: `./autobuild --stage arax_databases` |
 | `master's config_dbs.json already matches this build` | RTX already points at this build |
-| `... was a dry run` (record push) | see [Go from a dry run to a real release](#go-from-a-dry-run-to-a-real-release) |
+| `Can't publish the build record yet` | stage on every server and open the PR first |
 | `The checkout is on '...', not 'master'` | switch arax-build-automation to `master` |
 | `master has N commit(s) not on origin/master` | push or drop your own commits first |
 | CI can't find a database | see [5a](#5a-ci) |
@@ -1327,7 +1216,7 @@ For an autobuild failure, find the failed rule in Snakemake's output, read its l
 
 ### Add or change a staging target
 
-Add a block under `staging.targets` ([configuration](#staging)); set `sftp: true` for an SFTP-only one. Names must be unique. Try it with `upload: false` first.
+Add a block under `staging.targets` ([configuration](#staging)); set `sftp: true` for an SFTP-only one. Names must be unique. Try it with `./autobuild --rehearse --stage NAME` first.
 
 ### Update dependencies
 
@@ -1357,8 +1246,8 @@ Kick off
 - [ ] ≥100 GB free on arax-databases.rtx.ai and arax.ncats.io (#deployment notified before any deletion)
 
 autobuild
-- [ ] `snakemake -n` checked (versions, jobs) (assignee: )
-- [ ] `snakemake -c24` finished: autocomplete, tier0-info-for-overlay, curie_to_pmids, curie_ngd, fda_approved_drugs built, tested and staged on:
+- [ ] `./autobuild --rehearse --full` checked (versions, servers, PR diff) (assignee: )
+- [ ] `./autobuild --full` finished: autocomplete, tier0-info-for-overlay, curie_to_pmids, curie_ngd, fda_approved_drugs built, tested and staged on:
     - [ ] arax-databases.rtx.ai
     - [ ] cicd.rtx.ai
     - [ ] arax.ncats.io
@@ -1407,7 +1296,6 @@ Rollout
 Cleanup
 - [ ] Changelog entry
 - [ ] autobuild branch deleted (no CI run or preview still using it)
-- [ ] graph_version commented out in autobuild's config
 - [ ] After a week: last legacy endpoint moved
 - [ ] Reference check done; previous release removed from arax-databases and arax.ncats.io (#deployment notified; keep SFTP copy)
 - [ ] Issue closed with a retro

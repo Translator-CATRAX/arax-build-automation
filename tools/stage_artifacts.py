@@ -42,8 +42,9 @@ Stop = ssh_stage.Stop
 
 
 def load_config() -> dict:
-    import yaml
-    return yaml.safe_load((REPO / "config" / "config.yaml").read_text())
+    sys.path.insert(0, str(REPO / "workflow" / "scripts"))
+    import local_config
+    return local_config.load_config(REPO)
 
 
 def md5sum(path: Path) -> str:
@@ -193,14 +194,21 @@ def main() -> None:
     parser.add_argument("files", nargs="*",
                         help="Artifacts in the build directory to stage (default: all of them).")
     parser.add_argument("--targets", nargs="+", choices=list(targets), default=list(targets),
-                        help="Staging targets from config.yaml (default: all).")
+                        help="Staging targets from the config (default: all).")
+    parser.add_argument("--from-dir", type=Path,
+                        help="Take the artifacts and md5_sums/ from here instead of the build directory, "
+                             "e.g. a rebuild's v1.1 directory. They go to the same release.")
     parser.add_argument("--dry-run", action="store_true", help="Show the plan; upload nothing.")
     parser.add_argument("-y", "--yes", action="store_true", help="Do not ask before uploading.")
     args = parser.parse_args()
 
+    import local_config
+    if unset := local_config.missing_settings(config, keys=(), targets=args.targets):
+        parser.error(f"Missing settings: {', '.join(unset)}. {local_config.SETUP_HINT}")
+
     version = args.tier0.removeprefix("tier0-")
     release = f"tier0-{version}"
-    build_dir = Path(config["output_root"]) / version
+    build_dir = args.from_dir or Path(config["output_root"]) / version
     md5_dir = build_dir / "md5_sums"
     try:
         if not build_dir.is_dir():

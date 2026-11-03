@@ -115,8 +115,9 @@ def run(*args, **kwargs) -> subprocess.CompletedProcess:
 
 
 def load_config() -> dict:
-    import yaml
-    return yaml.safe_load((REPO / "config" / "config.yaml").read_text())
+    sys.path.insert(0, str(REPO / "workflow" / "scripts"))
+    import local_config
+    return local_config.load_config(REPO)
 
 
 # ---------------------------------------------------------------- local setup

@@ -1,6 +1,6 @@
 # autobuild
 
-A Snakemake pipeline that builds ARAX's databases from a Tier0 (translator_kg) graph release, tests them, stages them on the ARAX servers and opens a PR to RTX that points `config_dbs.json` at them.
+A pipeline that builds ARAX's databases from a Tier0 (translator_kg) graph release, tests them, stages them on the ARAX servers and opens a PR to RTX that points `config_dbs.json` at them. You run it with `./autobuild`, which uses Snakemake to build, and does only the actions you ask for.
 
 It builds autocomplete, `tier0-info-for-overlay`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs`.
 
@@ -29,16 +29,23 @@ Set up the virtual environment:
 ```bash
 cd arax-build-automation
 uv sync
-source .venv/bin/activate
 ```
 
-Activate the venv in every new shell, including tmux sessions. The rules call bare `python`, and without the venv they fail with `No module named 'stitch'`.
+`./autobuild` uses the venv by itself. To run anything else here by hand, such as `pytest` or `snakemake`, activate it first with `source .venv/bin/activate`. Without it, they fail with `No module named 'stitch'`.
 
 Make sure you have an RTX checkout on an up-to-date `master`. It can be anywhere, because `rtx_config_dbs` below gives its path.
 
 ## Configure
 
-**TL;DR - edit `config/config.yaml` to set your local paths, then choose how far the run should go.**
+**TL;DR - copy the example config and fill in your own settings.**
+
+`config/config.yaml` holds the shared settings. Your own settings go in `config/config.local.yaml`, which git ignores and which overrides the shared file key by key. Create it from the example:
+
+```bash
+cp config/config.local.example.yaml config/config.local.yaml
+```
+
+The pipeline stops with a `Missing settings` error until you've filled in everything it needs.
 
 Set your paths:
 
@@ -51,14 +58,21 @@ output_root: /path/to/arax_databases   # Build output
 rtx_config_dbs: /path/to/RTX/code/config_dbs.json
 ```
 
-Babel is about 200 GB, and the PubMed mirror is about 70 GB. For `babel_dir` and `pubmed_dir`, if you set a location that doesn't have the files, the pipeline downloads them for you, so you can set those to whatever you want. The first download of each takes hours. The Babel download resumes if interrupted and is checked against its release's md5. To fetch Babel ahead of the build, run `snakemake -c1 {babel_dir}/FILENAME`, using the filename `snakemake -n` reports.
+Babel is about 200 GB, and the PubMed mirror is about 70 GB. For `babel_dir` and `pubmed_dir`, if you set a location that doesn't have the files, the pipeline downloads them for you, so you can set those to whatever you want. The first download of each takes hours. The Babel download resumes if interrupted and is checked against its release's md5. To fetch Babel ahead of the build, run `snakemake -c1 {babel_dir}/FILENAME` with the venv activated, using the filename `./autobuild` reports.
 
 `drugbank_dir` works the same way, but the download needs SSH access to `kg2webhost.rtx.ai` and only works if the webhost still has the pinned version. Local files are named `drugbank-YYYY-MM-DD.xml`.
 
 The Tier0 graph is the only input you must download by hand (see Usage).
 
-Still in config/config.yaml, you’ll need to set your ITRB login. Only ITRB can make one for  you, if you do not have one. Reach out to the devops channel in the Translator Slack workspace for help. 
+Set the graph to build, which is the name of its folder in `graph_root`. This is required:
 
+```yaml
+graph_version: "YYYYMMDD"
+```
+
+The DrugBank version is pinned for everyone in `config/config.yaml`. Override it only if you mean to change it.
+
+To stage for real, also set your ITRB login. Only ITRB can make one for you, if you do not have one. Reach out in `#devops-teamexpanderagent` in the Translator Slack workspace for help. A build-only run doesn't need it.
 
 ```yaml
 staging:
@@ -67,23 +81,7 @@ staging:
       host: team-expander-USERNAME@sftp.transltr.io
 ```
 
-Choose how far the run goes. Each section already has these keys, so edit them in place:
-
-| Goal | `staging` | `rtx_pr` | `build_record` |
-|---|---|---|---|
-| Build and test only (use this for a first run) | `enabled: false` | `enabled: false` | `enabled: false` |
-| Full release | `enabled: true`, `upload: true` | `enabled: true`, `push: true` | `enabled: true`, `push: true` |
-
-**Warning:** the committed config has full release turned on, so a normal run stages files on the servers and opens a real RTX PR. Turn all three off until you're ready.
-
-Pin the versions for the `translator_kg` and `drugbank_version` in the YAML. 
-
-```yaml
-graph_version: "YYYYMMDD"      # otherwise the newest complete graph is built
-drugbank_version: "2023-01-04" # already pinned
-```
-
-The drugbank version is already pinned, but make sure it matches what you have locally. The graph version should be pinned to the version you want to be built. Otherwise, the pipeline defaults to the newest and complete folder in `graph_root`. 
+Nothing in the config starts a release. Only the flags you pass to `./autobuild` do.
 
 ## Usage
 
@@ -101,26 +99,85 @@ rm translator_kg.tar.zst
 ls -l                                           # should show nodes.jsonl, edges.jsonl and graph-metadata.json 
  ```
 2. Pull the latest `master` in your RTX checkout.
-3. Do a dry run. It prints the versions it picked and the jobs it will run:
+3. See the plan. This changes nothing and needs no server access:
    ```bash
-   snakemake -n
+   ./autobuild
    ```
-4. Run the pipeline in tmux, since a full build takes about an hour once its inputs are local:
+4. Run it in tmux, since a full build takes about an hour once its inputs are local:
    ```bash
-   snakemake -c24 2>&1 | tee ~/autobuild-run.log
+   ./autobuild --build                    # build and test; nothing leaves your machine
+   ./autobuild --rehearse --stage --pr    # check server access and show the PR diff
+   ./autobuild --stage --pr --record      # release
    ```
-5. Read `{output_root}/YYYYMMDD/build_report.md`, then get the RTX PR reviewed. Its URL is in `rtx_pr.json`.
+   Or do all of it in one step with `./autobuild --full`, which asks first.
+5. Read `{output_root}/YYYYMMDD/build_report.md`, then get the RTX PR reviewed. Its URL is in `{output_root}/YYYYMMDD/rtx_pr.json`.
+
+## Commands
+
+**TL;DR - only the actions you pass are done. Run with no flags, it shows the build plan.**
+
+| Command | What it does |
+|---|---|
+| `./autobuild` | Shows the build plan; changes nothing |
+| `./autobuild --build [ARTIFACT ...]` | Builds and tests everything, or just these artifacts. Tests can't be skipped. |
+| `./autobuild --stage [TARGET ...]` | Uploads to every server, or just these |
+| `./autobuild --pr` | Opens the RTX PR, or updates it if it's still open |
+| `./autobuild --record` | Commits and pushes `builds/YYYYMMDD/` to this repo |
+| `./autobuild --full` | All four, in that order, after asking. Stops at the first failure. |
+| `./autobuild --rehearse ...` | Shows the plan for the flags given and checks access; changes nothing |
+
+Artifacts: `autocomplete`, `tier0-info-for-overlay`, `curie_to_pmids`, `curie_ngd`, `fda_approved_drugs`. Targets: `arax_databases`, `cicd`, `arax_ncats`, `itrb_sftp`.
+
+| Option | What it does |
+|---|---|
+| `-y` | Doesn't ask. With missing artifacts, `--stage` stages the rest. Creating a new version still needs `--new-version`. |
+| `--new-version` | With `--build ARTIFACT` on a staged build, creates the next version without asking |
+| `-c N` | Cores Snakemake may use (default: all) |
+| `--unlock` | Clears a stale Snakemake lock |
+
+### What each action does when something isn't ready
+
+- **`--stage` with missing artifacts:** it warns you and asks whether to build them, stage everything else, or cancel. Anything that hasn't passed its tests counts as missing. A server only counts as staged once it has every artifact.
+- **`--pr`:** it stops unless every artifact is on `arax_databases` with a matching md5, because the PR's CI downloads them from there. It only changes the entries this pipeline builds, so other changes in `config_dbs.json` are kept.
+- **`--record`:** it stops unless every server is staged and there's a PR.
+
+| State of this build's PR | What `--pr` does |
+|---|---|
+| None | Opens a new PR |
+| Open | Pushes to its branch, which updates the PR. A new commit means rerunning CI and the dev-machine tests. |
+| Merged | Opens a new PR on `autobuild/tier0-YYYYMMDD-update-N`, if anything changed |
+| Closed, not merged | Opens a new PR |
+
+It stops if another build's autobuild PR is open, or if `master` is on a different Tier0 after a merge.
+
+### Rebuilding an artifact
+
+**Before a build is staged**, `./autobuild --build curie_ngd` rebuilds it in place, then reruns everything after it.
+
+**After a build is staged**, its files can't change, and ARAX wouldn't download a new file with the same name. So the rebuild becomes the next unused version in `{output_root}/YYYYMMDD/vX.Y/`, after asking:
+
+```bash
+./autobuild --build curie_ngd     # builds and tests version 1.1, for example
+./autobuild --stage               # uploads it
+./autobuild --pr                  # points ARAX at it
+./autobuild --record              # records it under builds/YYYYMMDD/v1.1/
+```
+
+- Existing files are never overwritten. Versions are numbered across the whole build, so a later rebuild of another artifact gets `v1.2`.
+- Rebuilding `curie_to_pmids` also rebuilds `curie_ngd`, because it's built from that file. Declining cancels the rebuild.
+- A `curie_to_pmids` rebuild uses the PubMed mirror as it is now, so its PubMed data can differ.
+- RTX's `code/generate-db-symlinks.sh` hardcodes filenames. Update it by hand if the release uses it.
 
 ## Tests
 
-**TL;DR - the pipeline runs these automatically. A failure stops the run before anything is staged or proposed.**
+**TL;DR - `--build` runs these automatically. A failure stops the run before anything can be staged or proposed.**
 
 The tests check that the finished databases can be read the way ARAX, Pathfinder and xCRG read them, often with the same queries. They use local files only and don't start ARAX or contact Plover or Retriever.
 
 | Step | Runs | Runs after | If it fails, these don't happen |
 |---|---|---|---|
-| `test_artifacts` | All of `tests/` except `test_config_dbs.py` | All five artifacts are built | md5s, `config_dbs.json`, report, staging, PR, build record |
-| `test_config_dbs` | `tests/test_config_dbs.py` | `config_dbs.json` and md5s are written | Report, staging, PR, build record |
+| `test_artifacts` | All of `tests/` except `test_config_dbs.py` | All five artifacts are built | md5s, `config_dbs.json`, report; so nothing can be staged |
+| `test_config_dbs` | `tests/test_config_dbs.py` | `config_dbs.json` and md5s are written | Report; so there's nothing to propose |
 
 All tests in a step run even if one fails, so the log shows every failure at once. There's no way to skip a failed test and continue. The built artifacts stay in `{output_root}/YYYYMMDD/`, but nothing has left your machine.
 
@@ -135,7 +192,7 @@ All tests in a step run even if one fails, so the log shows every failure at onc
 
 **Passing doesn't prove the data is complete.** Many checks use samples, and PubMed parse failures don't fail the build. Counts that drop aren't tested either, so still read the build report and check the `curie_to_pmids` log.
 
-Run them by hand against a finished build:
+Run them by hand against a finished build, with the venv activated:
 
 ```bash
 python -m pytest tests -p no:cacheprovider --ignore tests/test_config_dbs.py \
@@ -148,60 +205,41 @@ python -m pytest tests/test_config_dbs.py -p no:cacheprovider \
 
 ## Failures
 
-**TL;DR - read the failed step's log, fix the cause and run the same command again. Snakemake continues from the step that failed.**
+**TL;DR - read the failed step's log, fix the cause and run the same command again. It continues from where it stopped.**
 
-1. Find the failed rule in Snakemake's output.
-2. Read `{output_root}/YYYYMMDD/logs/<output name>.log`. `md5` and `record_build` have no log file, so their errors are in Snakemake's output.
+1. Find the failed step in the output.
+2. Read `{output_root}/YYYYMMDD/logs/<output name>.log`. `md5` has no log file, so its errors are in the output.
 3. Fix the cause.
-4. Run `snakemake -n` to confirm where it will restart.
-5. Run `snakemake -c24`.
+4. Rehearse the same command to confirm what it will do: `./autobuild --rehearse --build`.
+5. Run the same command again.
 
-For example, if `curie_ngd` runs out of memory, run `snakemake -c12`. `curie_to_pmids` is already finished, so it isn't redone.
+For example, if `curie_ngd` runs out of memory, run `./autobuild --build -c12`. `curie_to_pmids` is already finished, so it isn't redone.
 
 | Failure | Log or message | Fix | Rerun |
 |---|---|---|---|
-| A test fails because of a builder bug | `logs/test_artifacts.log` | Fix the builder script | `snakemake -c24`; rebuilds that artifact and everything after it |
-| A test fails because the test is wrong | `logs/test_artifacts.log` | Fix the test | `snakemake -c24`; reruns tests onward, no rebuild |
-| A step is killed, or `MemoryError` | Killed with no error | Use fewer cores (for `curie_ngd`) or free memory (`curie_to_pmids` ignores `-c`) | `snakemake -c12` |
-| Run interrupted | `IncompleteFilesException` | None | `snakemake -c24 --rerun-incomplete` |
-| Stale lock | `LockException` | Confirm no other run is active, then `snakemake --unlock` | `snakemake -c24` |
-| RTX key missing | `... is not in database_downloads of ...` | Put RTX on an up-to-date `master`; if RTX renamed the key, update `arax_config.smk` and `test_config_dbs.py` | `snakemake -c24` |
-| Not enough disk for Babel | `... needs N GiB more ...` | Free space | `snakemake -c24` |
-| SSH failure | `Permission denied (publickey)` | Fix the key or alias | `snakemake -c4 stage`, or `snakemake -c24` for all remaining steps |
-| Server is short on space | `Only N GB free on ...` | Post in `#deployment` before deleting anything | `snakemake -c24` |
-| Corrupted upload | `md5 mismatch after upload` | None | `snakemake -c24`; the upload resumes |
-| Partial or extra file on SFTP | `already holds other files ... or files of the wrong size` | Have the file removed from the drop | `snakemake -c24` |
-| Earlier PR still open | `An autobuild PR is still open` | Merge or close it | `snakemake -c1 rtx_config_pr` |
-| Branch exists but no PR opened | `Branch autobuild/tier0-... already exists` | Don't delete it; see "Recover a half-finished PR step" in the rollout procedure | Follow that procedure |
-
-**Run one step on purpose:**
-
-```bash
-snakemake -c24 {output_root}/YYYYMMDD/curie_ngd_v1.0_tier0-YYYYMMDD.sqlite   # build just this output
-snakemake -c1 {output_root}/YYYYMMDD/staged/cicd.json                        # stage on one server
-snakemake -c24 --forcerun curie_ngd                                          # redo a step and everything after it
-```
-
-**Once a build is staged, don't rebuild its artifacts through Snakemake.** The same filename would have a different md5, so staging stops. Build a `v1.1` by hand, stage it with `tools/stage_artifacts.py`, and open a PR that points ARAX at it.
-
-## Useful commands
-
-```bash
-snakemake -n                                   # dry run
-snakemake -c24                                 # full build
-snakemake -c24 --forcerun curie_ngd            # rebuild one artifact
-snakemake -c4 stage                            # stage only
-snakemake -c1 rtx_config_pr                    # open the RTX PR only
-snakemake --unlock                             # clear a stale lock
-```
+| A test fails because of a builder bug | `logs/test_artifacts.log` | Fix the builder script | `./autobuild --build`; rebuilds that artifact and everything after it |
+| A test fails because the test is wrong | `logs/test_artifacts.log` | Fix the test | `./autobuild --build`; reruns tests onward, no rebuild |
+| A step is killed, or `MemoryError` | Killed with no error | Use fewer cores (for `curie_ngd`) or free memory (`curie_to_pmids` ignores `-c`) | `./autobuild --build -c12` |
+| Stale lock | `LockException` | Confirm no other run is active, then `./autobuild --unlock` | The same command |
+| Setting not filled in | `Missing settings: ...` | Set it in `config/config.local.yaml` | The same command |
+| RTX key missing | `... is not in database_downloads of ...` | Put RTX on an up-to-date `master`; if RTX renamed the key, update `arax_config.smk`, `test_config_dbs.py` and `BUILT_KEYS` in `open_config_pr.py` | `./autobuild --build` |
+| Not enough disk for Babel | `... needs N GiB more ...` | Free space | `./autobuild --build` |
+| SSH failure | `Permission denied (publickey)` | Fix the key or alias | `./autobuild --stage` |
+| Server is short on space | `Only N GB free on ...` | Post in `#deployment` before deleting anything | `./autobuild --stage` |
+| Corrupted upload | `md5 mismatch after upload` | None | `./autobuild --stage`; the upload resumes |
+| Partial file on SFTP | `already exists at a different size` | Have the file removed from the drop | `./autobuild --stage` |
+| Not on the database server | `Not staged on ... with matching md5s` | Stage first | `./autobuild --stage arax_databases`, then `--pr` |
+| Another build's PR is open | `Another build's autobuild PR is still open` | Merge or close it | `./autobuild --pr` |
+| Push rejected | The push isn't a fast-forward | Someone pushed at the same moment | `./autobuild --pr` |
+| Record won't push | `... has N commit(s) not on origin/master` | Push or drop your own commits first | `./autobuild --record` |
 
 ## Tools
 
-**TL;DR - these are run by hand. The pipeline doesn't use them, and they don't affect whether it passes. Activate the venv first.**
+**TL;DR - `--stage` uses `stage_artifacts.py`. The others are only run by hand. Activate the venv first.**
 
 | Tool | Use it to |
 |---|---|
-| `tools/stage_artifacts.py` | Stage files outside a build, such as xDTD or a `v1.1` |
+| `tools/stage_artifacts.py` | Stage files that aren't part of the pipeline's release, such as xDTD |
 | `tools/run_test_suite.py` | Run a Translator test suite against ARAX |
 | `workflow/scripts/curie_pmids/mirror_pubmed.py --check` | Compare the PubMed mirror with NCBI without changing anything |
 | `workflow/scripts/report/artifact_stats.py` | Write counts for a build that has none, so the next report can compare against it |
@@ -270,9 +308,11 @@ python workflow/scripts/report/artifact_stats.py --output builds/YYYYMMDD/artifa
 
 ## Layout
 
-- `config/config.yaml`: paths, servers and switches
-- `workflow/Snakefile`, `workflow/rules/`: the pipeline
+- `config/config.yaml`: shared settings: servers and release switches, off by default
+- `config/config.local.yaml`: your own paths, graph version and ITRB login; not tracked (copy `config/config.local.example.yaml`)
+- `autobuild`, `tools/autobuild_cli.py`: the command you run; it runs staging, the PR and the record
+- `workflow/Snakefile`, `workflow/rules/`: the build and tests
 - `workflow/scripts/`: the scripts the rules run
 - `tests/`: pytest checks run against the finished artifacts
-- `tools/`: standalone scripts (staging outside a build, running Translator test suites)
+- `tools/`: the command's code and standalone scripts (staging by hand, running Translator test suites); `tools/tests/` tests the command itself
 - `builds/`: one record per build

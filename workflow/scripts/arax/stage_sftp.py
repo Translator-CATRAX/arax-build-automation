@@ -78,7 +78,7 @@ def main() -> None:
                         help="One md5sum-format file per release artifact.")
     parser.add_argument("--release", required=True, help="Release directory name, tier0-YYYYMMDD.")
     parser.add_argument("--host", required=True,
-                        help="sftp destination, e.g. team-expander-hodgesf@sftp.transltr.io")
+                        help="sftp destination, e.g. team-expander-USERNAME@sftp.transltr.io")
     parser.add_argument("--databases", default="databases",
                         help="Directory on the server holding releases' artifacts.")
     parser.add_argument("--md5-sums", default="md5_sums",

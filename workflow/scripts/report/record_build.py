@@ -5,11 +5,13 @@ The record holds everything about a build except the artifacts themselves:
 the report, the counts the next build compares against, config_dbs.json, the
 PubMed manifest, md5s, test results, benchmarks and logs, plus where the
 build was staged and which RTX PR proposed it. The record's build_report.md is
-the build's report with a Release section added for those last two.
+the build's report with a Release section added for those last two. Rebuilt
+artifacts' records go in a subdirectory named after their version.
 """
 
 import argparse
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -59,6 +61,11 @@ def main() -> None:
             shutil.copytree(args.build_dir / name, args.record_dir / name, dirs_exist_ok=True)
     if (args.build_dir / "rtx_pr.json").exists():
         shutil.copy2(args.build_dir / "rtx_pr.json", args.record_dir / "rtx_pr.json")
+    # A rebuild's directory (v1.1, ...): its report, config and logs, not its data.
+    for directory in args.build_dir.iterdir():
+        if directory.is_dir() and re.fullmatch(r"v\d+\.\d+", directory.name):
+            shutil.copytree(directory, args.record_dir / directory.name, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("*.sqlite", "*.pickle", "*.db"))
 
     report = (args.build_dir / "build_report.md").read_text().rstrip("\n").splitlines()
     (args.record_dir / "build_report.md").write_text(

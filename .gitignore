@@ -11,3 +11,5 @@ artifacts/
 
 
 .obsidian/
+
+config/config.local.yaml

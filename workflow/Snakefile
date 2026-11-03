@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import shlex
 import sys
 from pathlib import Path
@@ -10,31 +9,31 @@ from pathlib import Path
 os.environ["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}"
 
 configfile: "config/config.yaml"
-OUTPUT_ROOT = Path(config["output_root"])
+# Each person's own settings, which override the shared ones key by key.
+LOCAL_CONFIG = Path(workflow.basedir).parent / "config" / "config.local.yaml"
+if LOCAL_CONFIG.exists():
+    configfile: str(LOCAL_CONFIG)
+
 SCRIPTS = Path(workflow.basedir) / "scripts"
 
+sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS / "sources"))
 import babel
+import local_config
 import webhost
 
+# Stop now, with a clear message, if anything only you can supply is missing.
+if unset := local_config.missing_settings(
+        config, keys=(*local_config.REQUIRED_PATHS, "graph_version")):
+    raise ValueError(f"Missing settings: {', '.join(unset)}. {local_config.SETUP_HINT}")
+
+OUTPUT_ROOT = Path(config["output_root"])
+
 # The Tier0 graph is placed by hand under {graph_root}/YYYYMMDD/ (the graph's
-# build date). Build the newest complete one, or the version pinned in the
-# config.
+# build date), and graph_version says which one to build.
 GRAPH_ROOT = Path(config["graph_root"])
 GRAPH_FILES = ("nodes.jsonl", "edges.jsonl", "graph-metadata.json")
-
-
-def local_graph_versions(root: Path) -> set[str]:
-    """YYYYMMDD graph directories under root that have every graph file."""
-    return {path.name for path in root.glob("*")
-            if re.fullmatch(r"\d{8}", path.name)
-            and all((path / f).exists() for f in GRAPH_FILES)}
-
-
-VERSION = str(config.get("graph_version") or max(local_graph_versions(GRAPH_ROOT), default=""))
-if not VERSION:
-    raise ValueError(f"No complete graph directory (YYYYMMDD/ with {', '.join(GRAPH_FILES)}) "
-                     f"under {GRAPH_ROOT}")
+VERSION = str(config["graph_version"])
 KGX_DIR = GRAPH_ROOT / VERSION
 if missing := [f for f in GRAPH_FILES if not (KGX_DIR / f).exists()]:
     raise ValueError(f"Graph {KGX_DIR} is missing {', '.join(missing)}")
@@ -110,20 +109,6 @@ BUILD_REPORT = BUILD_DIR / "build_report.md"
 # Each build's report, counts, logs and test results are kept in the repo,
 # under builds/YYYYMMDD/ like the artifacts, so they outlive the artifacts.
 RECORDS_ROOT = Path(workflow.basedir).parent / "builds"
-BUILD_RECORD = RECORDS_ROOT / VERSION / "build_report.md"
-RECORD_PUSH_RESULT = BUILD_DIR / "record_pushed.json"
-RECORD_PUSH = config.get("build_record", {})
-
-STAGING = config.get("staging", {})
-STAGING_TARGETS = STAGING.get("targets", {})
-ARAX_DATABASES = STAGING_TARGETS["arax_databases"]
-STAGE_RESULTS = [BUILD_DIR / "staged" / f"{target}.json" for target in STAGING_TARGETS]
-# Targets reached over ssh, and SFTP-only ones (the ITRB drop), staged by
-# different rules.
-SSH_TARGETS = [t for t, target in STAGING_TARGETS.items() if not target.get("sftp")]
-SFTP_TARGETS = [t for t, target in STAGING_TARGETS.items() if target.get("sftp")]
-RTX_PR_RESULT = BUILD_DIR / "rtx_pr.json"
-RTX_PR = config.get("rtx_pr", {})
 
 
 def artifact_log(artifact: Path) -> Path:
@@ -143,15 +128,13 @@ onsuccess:
         WORK_DIR.rmdir()
 
 
+# Everything Snakemake does: build, test and report. Staging, the RTX PR and the
+# build record are run by ./autobuild, only when asked for.
 rule all:
     input:
         [MD5_DIR / f"{artifact.name}.md5" for artifact in RELEASE_ARTIFACTS],
         CONFIG_DBS,
         BUILD_REPORT,
-        STAGE_RESULTS if STAGING.get("enabled") else [],
-        [RTX_PR_RESULT] if RTX_PR.get("enabled") else [],
-        BUILD_RECORD,
-        [RECORD_PUSH_RESULT] if RECORD_PUSH.get("enabled") else [],
 
 
 include: "rules/sources.smk"
@@ -163,6 +146,3 @@ include: "rules/fda_drugs.smk"
 include: "rules/md5.smk"
 include: "rules/arax_config.smk"
 include: "rules/report.smk"
-include: "rules/stage.smk"
-include: "rules/rtx_pr.smk"
-include: "rules/record.smk"

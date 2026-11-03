@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""Entry point for the ARAX database pipeline; see tools/autobuild_cli.py or --help.
+
+Runs itself with the project's venv, so there is nothing to activate first.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent
+VENV = REPO / ".venv"
+
+if not (VENV / "bin" / "python").exists():
+    sys.exit("No .venv in this checkout; run `uv sync` first.")
+if Path(sys.prefix).resolve() != VENV.resolve():
+    python = str(VENV / "bin" / "python")
+    os.execv(python, [python, str(Path(__file__).resolve()), *sys.argv[1:]])
+
+sys.path.insert(0, str(REPO / "tools"))
+from autobuild_cli import main  # noqa: E402
+
+main()
