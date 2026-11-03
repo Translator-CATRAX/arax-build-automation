@@ -224,7 +224,7 @@ There is no `issue-XXXX` branch any more. autobuild creates `autobuild/tier0-YYY
 
 ### 1b. Get the Tier0 graph
 
-Releases are at <https://kgx-storage.ci.transltr.io/releases/translator_kg/> (no login). Use `translator_kg`, **not** `translator_kg_open`. Each release is a version folder (`1.0.2`, `1.0.3`, …) holding `translator_kg.tar.zst` (`nodes.jsonl` and `edges.jsonl`, ~3.4 GB compressed, ~28 GB unpacked), `graph-metadata.json` and `release-metadata.json`.
+Releases are at <https://kgx-storage.ci.transltr.io/releases/translator_kg/> (no login). Use `translator_kg`, **not** `translator_kg_open`. Each release is a version folder (`1.0.2`, `1.0.3`, …) holding `translator_kg.tar.zst` (`nodes.jsonl`, `edges.jsonl` and `graph-metadata.json`, ~3.4 GB compressed, ~28 GB unpacked) and separate metadata files.
 
 Find the newest release and its build date:
 
@@ -237,8 +237,7 @@ curl -s https://kgx-storage.ci.transltr.io/releases/translator_kg/latest-release
 ```bash
 mkdir /data/translator_kg/20260928
 cd /data/translator_kg/20260928
-curl -O https://kgx-storage.ci.transltr.io/releases/translator_kg/1.0.2/translator_kg.tar.zst
-curl -O https://kgx-storage.ci.transltr.io/releases/translator_kg/1.0.2/graph-metadata.json
+curl -LO https://kgx-storage.ci.transltr.io/releases/translator_kg/1.0.2/translator_kg.tar.zst
 tar --zstd -xf translator_kg.tar.zst
 rm translator_kg.tar.zst
 ls -l      # exactly nodes.jsonl, edges.jsonl, graph-metadata.json
