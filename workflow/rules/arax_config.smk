@@ -22,8 +22,7 @@ rule arax_config_dbs:
     shell:
         "python {input.script} --template {input.template} --output {output}"
         " --db-dir {params.db_dir}"
-        " --set tier0_sqlite={params.overlay}"
-        " --set kg2c_sqlite={params.overlay}"
+        " --set info_for_overlay_sqlite={params.overlay}"
         " --set autocomplete={params.autocomplete}"
         " --set curie_to_pmids={params.curie_to_pmids}"
         " --set curie_ngd={params.curie_ngd}"

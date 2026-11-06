@@ -49,8 +49,7 @@ SERVER_START_TIMEOUT = 600
 
 # Where ARAX_database_manager.py expects each config_dbs.json database, relative to RTX/code.
 LOCAL_DIRS = {
-    "tier0_sqlite": "ARAX/KnowledgeSources/KG2c",
-    "kg2c_sqlite": "ARAX/KnowledgeSources/KG2c",
+    "info_for_overlay_sqlite": "ARAX/KnowledgeSources/Tier0",
     "curie_to_pmids": "ARAX/KnowledgeSources/NormalizedGoogleDistance",
     "curie_ngd": "ARAX/KnowledgeSources/NormalizedGoogleDistance",
     "fda_approved_drugs": "ARAX/KnowledgeSources",
