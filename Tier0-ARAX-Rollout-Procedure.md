@@ -417,7 +417,7 @@ git push origin autobuild/tier0-YYYYMMDD
 
 ### 4a. Database paths
 
-- [ ] Check autobuild's diff in the PR. It sets `tier0_sqlite`, `kg2c_sqlite`, `autocomplete`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs` to `/translator/data/orangeboard/databases/tier0-YYYYMMDD/...`.
+- [ ] Check autobuild's diff in the PR. It sets `info_for_overlay_sqlite`, `autocomplete`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs` to `/translator/data/orangeboard/databases/tier0-YYYYMMDD/...`.
 - [ ] Set `explainable_dtd_db` to the new xDTD file (Phase 3), unless it was already updated on master.
 - [ ] **If the FDA drug set changed** ([2e](#2e-review-the-build-report)): publish it under a version higher than the one master uses now (e.g. `fda_approved_drugs_v1.1.pickle`; check no file of that name exists in any release directory). Copy the built pickle to that name, write its md5, stage it on all four servers ([Stage a single file by hand](#stage-a-single-file-by-hand)), and point `fda_approved_drugs` at it on this branch. In `code/generate-db-symlinks.sh`, change the `fda_approved_drugs_v1.0.pickle` link line to the new name too. Don't merge until this is done.
 - [ ] Update `code/ARAX/ARAXQuery/ARAX_database_manager.py` only if a key name changed. The paths themselves come from `config_dbs.json` through `RTXConfiguration`.
@@ -604,7 +604,7 @@ If the new build misbehaves after rollout:
 | Artifact | Built by | From | Used in ARAX by | `config_dbs.json` key |
 |---|---|---|---|---|
 | autocomplete | autobuild | Tier0 nodes | type-ahead in the UI | `autocomplete` |
-| tier0-info-for-overlay | autobuild | Tier0 nodes, edges, metadata | edge publications, Fisher's exact test, Infer, Pathfinder | `tier0_sqlite`, `kg2c_sqlite` |
+| tier0-info-for-overlay | autobuild | Tier0 nodes, edges, metadata | edge publications, Fisher's exact test, Infer, Pathfinder | `info_for_overlay_sqlite` |
 | curie_to_pmids | autobuild | PubMed, Babel, Tier0 edges | live NGD, xCRG | `curie_to_pmids` |
 | curie_ngd | autobuild | curie_to_pmids, Tier0 | precomputed NGD, Pathfinder, xCRG | `curie_ngd` |
 | fda_approved_drugs | autobuild | DrugBank, Babel | Expand's FDA-approved filter | `fda_approved_drugs` |
@@ -638,7 +638,7 @@ Counts below are from build 20260928.
 
 ### tier0-info-for-overlay
 
-- **Used by:** `ARAX_decorator` (edge publications), `Overlay/fisher_exact_test.py`, `Infer/scripts/infer_utilities.py`, `Path_Finder/utility.py` (node degree). Both `tier0_sqlite` and `kg2c_sqlite` point at it.
+- **Used by:** `ARAX_decorator` (edge publications), `Overlay/fisher_exact_test.py`, `Infer/scripts/infer_utilities.py`, `Path_Finder/utility.py` (node degree). `info_for_overlay_sqlite` points at it.
 - **Schema:** a small extract, **not** an ingest of the graph; there are no `nodes` or `edges` tables. Anything needing full node or edge properties should query Tier0.
   - `edge_publications(arax_edge_key TEXT PRIMARY KEY, publications TEXT)`: ~8.2M rows; PMIDs joined with `ǂ` (U+01C2)
   - `neighbors(id TEXT PRIMARY KEY, neighbor_counts TEXT)`: ~1.77M rows; JSON `{expanded Biolink category: count}`
@@ -869,7 +869,7 @@ Steps 1–8 are rules in `workflow/rules/`. Paths are relative to `{output_root}
 
 Steps 9–11 aren't Snakemake rules: `./autobuild` runs them only when asked. Scratch files go in `work/` and are deleted by the rules that make them.
 
-**`arax_config_dbs`** (`arax/update_config_dbs.py`) copies `rtx_config_dbs` and sets six `database_downloads` entries to `{arax_db_root}/tier0-YYYYMMDD/<file>`: `tier0_sqlite` and `kg2c_sqlite` (tier0-info-for-overlay), `autocomplete`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs`. Every other entry is copied unchanged, with RTX's 3-space indent to keep the diff small. It fails if one of those keys isn't in the template.
+**`arax_config_dbs`** (`arax/update_config_dbs.py`) copies `rtx_config_dbs` and sets five `database_downloads` entries to `{arax_db_root}/tier0-YYYYMMDD/<file>`: `info_for_overlay_sqlite` (tier0-info-for-overlay), `autocomplete`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs`. Every other entry is copied unchanged, with RTX's 3-space indent to keep the diff small. It fails if one of those keys isn't in the template.
 
 ### What triggers a rebuild
 
@@ -1139,7 +1139,7 @@ cd ~/RTX-rollout     # not the rtx_config_dbs checkout (see Phase 4)
 git switch master && git pull
 git switch -c curie_ngd-v1.1-tier0-YYYYMMDD
 # edit only that artifact's line under database_downloads in code/config_dbs.json
-# (for tier0-info-for-overlay, change both tier0_sqlite and kg2c_sqlite)
+# (for tier0-info-for-overlay, the key is info_for_overlay_sqlite)
 git diff
 git commit -am "Use curie_ngd_v1.1_tier0-YYYYMMDD.sqlite"
 git push -u origin curie_ngd-v1.1-tier0-YYYYMMDD

@@ -1,4 +1,4 @@
-"""tier0-info-for-overlay, which ARAX uses as both kg2c_sqlite and tier0_sqlite.
+"""tier0-info-for-overlay, which ARAX uses as info_for_overlay_sqlite.
 The neighbors and category_counts tables are read by the Fisher exact test
 (Overlay/fisher_exact_test.py) and by Pathfinder's node degree lookup."""
 
