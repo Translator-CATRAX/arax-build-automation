@@ -55,7 +55,7 @@ Don't start a phase until the previous one's gate is met. Record the evidence in
 |---|---|---|---|
 | 1 | graph chosen; PSU has the stamp; pre-flight checks pass | release version, `YYYYMMDD`, xDTD rebuild/refresh decision | a pre-flight check fails |
 | 2 | `./autobuild --full` finished; build reviewed ([2e](#2e-review-the-build-report)) | PR link; build report link; inputs not in the report (Babel file, DrugBank version, RTX template commit); curie_to_pmids error counts; FDA set comparison | a test failed; parse or resolve errors unexplained; a count dropped without explanation |
-| 3 | xDTD on all four servers, checksums match PSU's | PSU's md5; md5 on each server | any checksum mismatch |
+| 3 | xDTD on all five servers, checksums match PSU's | PSU's md5; md5 on each server | any checksum mismatch |
 | 4 | every [4a](#4a-database-paths)–[4c](#4c-generate-db-symlinkssh) item done and pushed | commit SHA of the branch head | FDA set changed but no new filename |
 | 5 | CI, dev machine and `/test` all pass **on one commit** | that commit SHA; CI run link; test summaries | any failure on the recorded commit |
 | 6 | merged, with the tested commit (or a retest after any later change) | merge method; merge/squash commit SHA; sign-offs | sign-off missing; branch head isn't the tested commit |
@@ -114,7 +114,7 @@ Ask for everything before your first rollout. Each one blocks a different step.
 | `ubuntu@cicd.rtx.ai`, with passwordless sudo | autobuild staging; CI | Oregon State team |
 | `USERNAME@arax.ncats.io` (bastion and endpoint), with passwordless `sudo docker` | autobuild staging; endpoint rollout | ITRB, via `#devops-teamexpanderagent` |
 | `team-expander-USERNAME@sftp.transltr.io` | autobuild staging; xDTD upload | ITRB, via `#devops-teamexpanderagent` |
-| `ubuntu@kg2webhost.rtx.ai` | autobuild DrugBank download (only contacted when `drugbank_version` is unpinned or the pinned file isn't local) | Oregon State team |
+| `ubuntu@kg2webhost.rtx.ai` | autobuild staging (public download folder); DrugBank download (only contacted when `drugbank_version` is unpinned or the pinned file isn't local) | Oregon State team |
 | `ubuntu@arax.rtx.ai` | listed in the earlier procedure; not used by autobuild | Oregon State team |
 | write access to `RTXteam/RTX` | the PR, Phase 4 changes, merging | RTX team |
 | push access to `Translator-CATRAX/arax-build-automation` | autobuild's build record | repo owners |
@@ -174,7 +174,7 @@ git ls-remote git@github.com:RTXteam/RTX HEAD
 
 Software: Python 3.12, [uv](https://docs.astral.sh/uv/), git, [gh](https://cli.github.com/), ssh, rsync, scp, sftp, curl, zstd, tar, md5sum, and tmux (recommended).
 
-Time: with the inputs already local, a full build takes about **45 minutes** (build 20260928: 44:29), plus staging about 7 GB to each of four servers. The **first** PubMed mirror and the **first** Babel download each take hours.
+Time: with the inputs already local, a full build takes about **45 minutes** (build 20260928: 44:29), plus staging about 7 GB to each of five servers. The **first** PubMed mirror and the **first** Babel download each take hours.
 
 ### Install autobuild
 
@@ -315,7 +315,7 @@ If it fails, read the failed step's log, fix the cause and rerun the same comman
 When it finishes:
 
 - the five artifacts are built and tested in `/data/arax_databases/YYYYMMDD/`
-- they're staged and verified in `tier0-YYYYMMDD/` on `arax-databases.rtx.ai`, `cicd.rtx.ai`, `arax.ncats.io` and `sftp.transltr.io` (with md5 files on SFTP)
+- they're staged and verified in `tier0-YYYYMMDD/` on `arax-databases.rtx.ai`, `cicd.rtx.ai`, `arax.ncats.io`, `kg2webhost.rtx.ai` and `sftp.transltr.io`, with their md5 files (in `tier0-YYYYMMDD/md5_sums/` on the SSH servers, `md5_sums/tier0-YYYYMMDD/` on SFTP)
 - PR "Update config_dbs.json for Tier0 build YYYYMMDD" is open on RTXteam/RTX from `autobuild/tier0-YYYYMMDD`, with the diff and the build report in its description
 - the build record is committed to `builds/YYYYMMDD/` in arax-build-automation
 
@@ -419,7 +419,7 @@ git push origin autobuild/tier0-YYYYMMDD
 
 - [ ] Check autobuild's diff in the PR. It sets `info_for_overlay_sqlite`, `autocomplete`, `curie_to_pmids`, `curie_ngd` and `fda_approved_drugs` to `/translator/data/orangeboard/databases/tier0-YYYYMMDD/...`.
 - [ ] Set `explainable_dtd_db` to the new xDTD file (Phase 3), unless it was already updated on master.
-- [ ] **If the FDA drug set changed** ([2e](#2e-review-the-build-report)): publish it under a version higher than the one master uses now (e.g. `fda_approved_drugs_v1.1.pickle`; check no file of that name exists in any release directory). Copy the built pickle to that name, write its md5, stage it on all four servers ([Stage a single file by hand](#stage-a-single-file-by-hand)), and point `fda_approved_drugs` at it on this branch. In `code/generate-db-symlinks.sh`, change the `fda_approved_drugs_v1.0.pickle` link line to the new name too. Don't merge until this is done.
+- [ ] **If the FDA drug set changed** ([2e](#2e-review-the-build-report)): publish it under a version higher than the one master uses now (e.g. `fda_approved_drugs_v1.1.pickle`; check no file of that name exists in any release directory). Copy the built pickle to that name, write its md5, stage it on all five servers ([Stage a single file by hand](#stage-a-single-file-by-hand)), and point `fda_approved_drugs` at it on this branch. In `code/generate-db-symlinks.sh`, change the `fda_approved_drugs_v1.0.pickle` link line to the new name too. Don't merge until this is done.
 - [ ] Update `code/ARAX/ARAXQuery/ARAX_database_manager.py` only if a key name changed. The paths themselves come from `config_dbs.json` through `RTXConfiguration`.
 - [ ] Check nothing else in RTX hardcodes the previous Tier0 stamp:
   ```bash
@@ -690,7 +690,7 @@ Counts below are from build 20260928.
 
 ### md5 files
 
-One per artifact, in `md5sum` format (hash, two spaces, bare filename), so `md5sum -c` works from any directory holding the artifacts. autobuild writes them only after the tests pass. On the ITRB SFTP they're required: a missing, mistyped or out-of-date md5 makes ITRB's image build fail and the pod crash-loop.
+One per artifact, in `md5sum` format (hash, two spaces, bare filename), so `md5sum -c` works from any directory holding the artifacts. autobuild writes them only after the tests pass, and stages them with the artifacts: in `tier0-YYYYMMDD/md5_sums/` on the SSH servers (so `md5sum -c md5_sums/*.md5` works from the release directory), and in `md5_sums/tier0-YYYYMMDD/` on the ITRB SFTP. On the ITRB SFTP they're required: a missing, mistyped or out-of-date md5 makes ITRB's image build fail and the pod crash-loop.
 
 ---
 
@@ -702,7 +702,7 @@ One per artifact, in `md5sum` format (hash, two spaces, bare filename), so `md5s
 | cicd.rtx.ai | `ubuntu` | `/mnt/data/orangeboard/databases/tier0-YYYYMMDD/` | the CI host, with its own copy. The parent is root-owned, so autobuild creates and renames the release directory with `sudo -n`. Mode `777`. |
 | arax.ncats.io | your own, via alias `arax` | `/translator/data/orangeboard/databases/tier0-YYYYMMDD/` | the ARAX host (dev, test and production endpoints). ARAX runs in Docker as `rt`; containers mount `/translator/data` at the same path. Mode `777`. Bastion and IP allowlist. |
 | sftp.transltr.io | `team-expander-USERNAME` | `databases/tier0-YYYYMMDD/`, `md5_sums/tier0-YYYYMMDD/` (under `/transltr-063208468694-sftp/team-expander`) | the ITRB drop. ITRB builds the transltr.io (CI, test, production) images from it after the PR is merged (the mechanism is ITRB's; see [7b](#7b-check-the-itrb-ci-deployment)). SFTP only with S3 behind it: no shell, no md5sum, no rename, no resumed uploads. |
-| kg2webhost.rtx.ai | `ubuntu` | `/home/ubuntu/drugbank.xml` | DrugBank source. DrugBank isn't redistributable, so it's never staged or committed. |
+| kg2webhost.rtx.ai | `ubuntu` | `/var/www/kg2webhost/tier0-YYYYMMDD/` | public download folder (e.g. for Shepherd): nginx serves it at `https://kg2webhost.rtx.ai/tier0-YYYYMMDD/<file>`, with no login and no directory listing. Mode `775`. Also the DrugBank source, at `/home/ubuntu/drugbank.xml`, outside the served folder: DrugBank isn't redistributable, so it's never staged or committed. |
 
 ---
 
@@ -734,7 +734,7 @@ Shared settings are in `config/config.yaml`. Everything machine- and person-spec
 |---|---|
 | `staging.targets.<name>` | one block per target; the name becomes `staged/<name>.json` and `logs/staged_<name>.log` |
 
-SSH targets (`arax_databases`, `cicd`, `arax_ncats`):
+SSH targets (`arax_databases`, `cicd`, `arax_ncats`, `kg2webhost`):
 
 | Key | Meaning | Default |
 |---|---|---|
@@ -986,7 +986,8 @@ Staging means putting the tested artifacts on every server **before** anything p
 4. With `--rehearse`, reports and stops.
 5. Creates `{root}/tier0-YYYYMMDD/` and `{root}/.staging-tier0-YYYYMMDD-files/` (with `sudo -n` if `sudo: true`), owned by the SSH user, mode `dir_mode`.
 6. Uploads to the hidden directory with `rsync --partial`, or `scp` if the server has no rsync. Files are mode 644.
-7. Checks every md5 on the server, moves each file into place with `mv -n`, and checks the md5s and read access again.
+7. Checks every md5 on the server, moves each file into place with `mv -n`, and checks the md5s again.
+8. Uploads each artifact's md5 file to `{root}/tier0-YYYYMMDD/md5_sums/` the same way, last, so a md5 file there means its artifact is in place and verified. A md5 file already there with different contents stops it. Then checks read access.
 
 Nothing on any server is ever deleted.
 
@@ -1262,7 +1263,7 @@ ExplainableDTD
 
 Integration (on autobuild/tier0-YYYYMMDD)
 - [ ] `explainable_dtd_db` in config_dbs.json
-- [ ] FDA set changed? new `fda_approved_drugs_v1.N.pickle` staged on all four servers; config_dbs.json and generate-db-symlinks.sh updated
+- [ ] FDA set changed? new `fda_approved_drugs_v1.N.pickle` staged on all five servers; config_dbs.json and generate-db-symlinks.sh updated
 - [ ] ARAX_database_manager.py (only if key names changed)
 - [ ] No hardcoded previous Tier0 stamp left (`git grep`)
 - [ ] OpenAPI version / biolink-version bumps (confirm with @edeutsch)

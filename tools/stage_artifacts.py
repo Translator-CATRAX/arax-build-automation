@@ -14,7 +14,9 @@ Each artifact gets a md5sum-format md5_sums/<artifact>.md5 if it has none; an
 artifact that no longer matches its existing .md5 stops the run (delete the
 stale .md5 if the file was remade on purpose). On the ssh targets files are
 uploaded into a hidden directory next to the release, md5-checked there, then
-moved into {root}/tier0-YYYYMMDD/ and checked again. On the SFTP drop the
+moved into {root}/tier0-YYYYMMDD/ and checked again; their .md5 files then go
+to {root}/tier0-YYYYMMDD/md5_sums/, so anyone with a copy can run
+`md5sum -c md5_sums/*.md5` from the release directory. On the SFTP drop the
 artifacts go to {databases}/tier0-YYYYMMDD/ and then their .md5 files to
 {md5_sums}/tier0-YYYYMMDD/, checked by size (it has no shell).
 
@@ -90,7 +92,28 @@ def check_md5s(artifacts: list[Path], md5_dir: Path) -> dict[str, str]:
 
 # ------------------------------------------------------------------ ssh hosts
 
-def plan_ssh(target: dict, release: str, artifacts: list[Path], digests: dict) -> list[Path]:
+def read_md5_file(text: str) -> tuple[str, str]:
+    """(digest, filename) from md5sum-format text; ("", "") if it isn't one line of that."""
+    fields = text.split()
+    return (fields[0], fields[1]) if len(fields) == 2 else ("", "")
+
+
+def remote_md5_files(host: str, directory: str, names: list[str]) -> dict[str, tuple[str, str]]:
+    """(digest, filename) recorded in each named .md5 file in a server directory; missing ones
+    are left out."""
+    command = ("cd {} 2>/dev/null || exit 0; for f in {}; do [ -f \"$f\" ] && "
+               "printf '%s\\t%s\\n' \"$f\" \"$(tr '\\n\\t' '  ' < \"$f\")\"; done; true").format(
+        shlex.quote(directory), " ".join(shlex.quote(n) for n in names))
+    found = {}
+    for line in ssh_stage.ssh(host, command).splitlines():
+        name, _, text = line.partition("\t")
+        found[name] = read_md5_file(text)
+    return found
+
+
+def plan_ssh(target: dict, release: str, artifacts: list[Path], digests: dict,
+             md5_dir: Path) -> list[Path]:
+    """Artifacts to upload, then the .md5 files for {release}/md5_sums/ that aren't there yet."""
     host, root = target["host"], target["root"].rstrip("/")
     release_dir = f"{root}/{release}"
     exists = ssh_stage.ssh(host, f"test -d {shlex.quote(release_dir)} && echo yes || true").strip()
@@ -99,6 +122,14 @@ def plan_ssh(target: dict, release: str, artifacts: list[Path], digests: dict) -
     if differing:
         raise Stop(f"{host}:{release_dir} already has different copies of: {', '.join(differing)}; "
                    "they are never overwritten")
+    md5_files = [md5_dir / f"{p.name}.md5" for p in artifacts]
+    staged_md5s = (remote_md5_files(host, f"{release_dir}/md5_sums", [f.name for f in md5_files])
+                   if exists else {})
+    differing = [name for name, record in staged_md5s.items()
+                 if record != read_md5_file((md5_dir / name).read_text())]
+    if differing:
+        raise Stop(f"{host}:{release_dir}/md5_sums already has different copies of: "
+                   f"{', '.join(differing)}; they are never overwritten")
     todo = [p for p in artifacts if p.name not in staged]
     needed = sum(p.stat().st_size for p in todo)
     if todo:
@@ -106,39 +137,56 @@ def plan_ssh(target: dict, release: str, artifacts: list[Path], digests: dict) -
         if free < needed + FREE_SPACE_MARGIN:
             raise Stop(f"Only {free / 1024**3:.0f} GB free on {host}; "
                        f"{needed / 1024**3:.1f} GB needed plus a margin")
-    return todo
+    return todo + [f for f in md5_files if f.name not in staged_md5s]
 
 
-def stage_ssh(target: dict, release: str, todo: list[Path], digests: dict) -> None:
+def stage_ssh(target: dict, release: str, todo: list[Path], digests: dict, md5_dir: Path) -> None:
+    """Upload the planned artifacts into {release}/, then their .md5 files into
+    {release}/md5_sums/: a .md5 there means its artifact is in place and verified."""
     host, root = target["host"], target["root"].rstrip("/")
     release_dir, staging_dir = f"{root}/{release}", f"{root}/.staging-{release}-files"
+    md5s_dir = f"{release_dir}/md5_sums"
     sudo = "sudo -n " if target.get("sudo") else ""
     mode = shlex.quote(target.get("dir_mode", "775"))
-    for directory in (release_dir, staging_dir):
+    for directory in (release_dir, md5s_dir, staging_dir):
         quoted = shlex.quote(directory)
         ssh_stage.ssh(host, f"test -d {quoted} || ({sudo}mkdir -p {quoted}"
                             f" && {sudo}chown \"$(id -u):$(id -g)\" {quoted} && chmod {mode} {quoted})")
-    names = [p.name for p in todo]
-    if ssh_stage.ssh(host, "command -v rsync || true").strip():
-        # Not captured, so rsync's progress shows; an interrupted file resumes on rerun.
-        subprocess.run(["rsync", "--partial", "--times", "--chmod=F644", "--info=progress2",
-                        "-e", shlex.join(["ssh", *SSH_OPTIONS]), *map(str, todo),
-                        f"{host}:{staging_dir}/"], check=True)
-    else:
-        ssh_stage.run("scp", "-p", "-q", *SSH_OPTIONS, *map(str, todo), f"{host}:{staging_dir}/")
-        ssh_stage.ssh(host, "chmod 644 " + " ".join(shlex.quote(f"{staging_dir}/{n}") for n in names))
-    expected = {n: digests[n] for n in names}
-    if ssh_stage.remote_md5s(host, staging_dir, names) != expected:
-        raise Stop(f"md5 mismatch after upload in {host}:{staging_dir}")
-    # mv -n never replaces a file that appeared in the release meanwhile.
-    for name in names:
-        ssh_stage.ssh(host, f"{sudo}mv -n {shlex.quote(f'{staging_dir}/{name}')} "
-                            f"{shlex.quote(f'{release_dir}/{name}')}")
-    if ssh_stage.remote_md5s(host, release_dir, names) != expected:
-        raise Stop(f"md5 mismatch in {host}:{release_dir} after moving the files in")
+    md5_files = [p for p in todo if p.parent == md5_dir]
+    artifacts = [p for p in todo if p.parent != md5_dir]
+    names = [p.name for p in artifacts]
+    if artifacts:
+        if ssh_stage.ssh(host, "command -v rsync || true").strip():
+            # Not captured, so rsync's progress shows; an interrupted file resumes on rerun.
+            subprocess.run(["rsync", "--partial", "--times", "--chmod=F644", "--info=progress2",
+                            "-e", shlex.join(["ssh", *SSH_OPTIONS]), *map(str, artifacts),
+                            f"{host}:{staging_dir}/"], check=True)
+        else:
+            ssh_stage.run("scp", "-p", "-q", *SSH_OPTIONS, *map(str, artifacts), f"{host}:{staging_dir}/")
+            ssh_stage.ssh(host, "chmod 644 " + " ".join(shlex.quote(f"{staging_dir}/{n}") for n in names))
+        expected = {n: digests[n] for n in names}
+        if ssh_stage.remote_md5s(host, staging_dir, names) != expected:
+            raise Stop(f"md5 mismatch after upload in {host}:{staging_dir}")
+        # mv -n never replaces a file that appeared in the release meanwhile.
+        for name in names:
+            ssh_stage.ssh(host, f"{sudo}mv -n {shlex.quote(f'{staging_dir}/{name}')} "
+                                f"{shlex.quote(f'{release_dir}/{name}')}")
+        if ssh_stage.remote_md5s(host, release_dir, names) != expected:
+            raise Stop(f"md5 mismatch in {host}:{release_dir} after moving the files in")
+    if md5_files:
+        md5_names = [f.name for f in md5_files]
+        ssh_stage.run("scp", "-p", "-q", *SSH_OPTIONS, *map(str, md5_files), f"{host}:{staging_dir}/")
+        ssh_stage.ssh(host, "chmod 644 " + " ".join(shlex.quote(f"{staging_dir}/{n}") for n in md5_names))
+        for name in md5_names:
+            ssh_stage.ssh(host, f"{sudo}mv -n {shlex.quote(f'{staging_dir}/{name}')} "
+                                f"{shlex.quote(f'{md5s_dir}/{name}')}")
+        expected_md5s = {f.name: read_md5_file(f.read_text()) for f in md5_files}
+        if remote_md5_files(host, md5s_dir, md5_names) != expected_md5s:
+            raise Stop(f"{host}:{md5s_dir} doesn't hold the expected md5 files after the upload")
     ssh_stage.ssh(host, f"rmdir {shlex.quote(staging_dir)} 2>/dev/null || true")
     if target.get("read_check"):
-        ssh_stage.check_readable(host, target["read_check"], release_dir, names)
+        ssh_stage.check_readable(host, target["read_check"], release_dir,
+                                 names + [f"md5_sums/{f.name}" for f in md5_files])
 
 
 # ------------------------------------------------------------------ SFTP drop
@@ -228,7 +276,7 @@ def main() -> None:
                 if target.get("sftp"):
                     plans[name] = plan_sftp(target, release, artifacts, md5_dir)
                 else:
-                    plans[name] = plan_ssh(target, release, artifacts, digests)
+                    plans[name] = plan_ssh(target, release, artifacts, digests, md5_dir)
             except Stop as stop:
                 problems[name] = str(stop)
 
@@ -262,7 +310,7 @@ def main() -> None:
                 if target.get("sftp"):
                     stage_sftp(target, release, todo)
                 else:
-                    stage_ssh(target, release, todo, digests)
+                    stage_ssh(target, release, todo, digests, md5_dir)
                 print(f"{name}: staged and verified")
             except (Stop, subprocess.SubprocessError) as stop:
                 failed[name] = str(stop)

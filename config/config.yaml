@@ -30,7 +30,9 @@ arax_db_root: /translator/data/orangeboard/databases
 # the ARAX database server that ARAX_database_manager.py downloads from, the
 # hosts that keep their own copies, and the ITRB SFTP drop (sftp: true, below).
 # Files are uploaded to a hidden directory and moved into place once their md5s
-# check out. Existing files are never overwritten and nothing is deleted.
+# check out; on the ssh targets their .md5 files then go to
+# {root}/tier0-YYYYMMDD/md5_sums/. Existing files are never overwritten and
+# nothing is deleted.
 #   sudo:     create and rename the release directory with sudo
 #   dir_mode: permissions of the release directory
 #   read_check: command prefix that runs as the user ARAX reads the files as;
@@ -54,6 +56,13 @@ staging:
       dir_mode: "777"
       # The rtx2 container mounts /translator/data at the same path and runs ARAX as rt.
       read_check: sudo -n docker exec rtx2 sudo -u rt
+    kg2webhost:
+      # Public download folder (e.g. for Shepherd): nginx serves root, so a release
+      # is at https://kg2webhost.rtx.ai/tier0-YYYYMMDD/<file>. Public: only
+      # redistributable files belong here (never DrugBank).
+      host: ubuntu@kg2webhost.rtx.ai
+      root: /var/www/kg2webhost
+      dir_mode: "775"
     itrb_sftp:
       # The ITRB SFTP drop (S3 behind it, no shell). ITRB takes releases from
       # here once the build's RTX PR is merged into master. Artifacts go to

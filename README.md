@@ -118,7 +118,7 @@ Nothing in the config starts a release. Only the flags you pass to `./autobuild`
 | `./autobuild --full` | All four, in that order, after asking. Stops at the first failure. |
 | `./autobuild --rehearse ...` | Shows the plan for the flags given and checks access; changes nothing |
 
-Artifacts: `autocomplete`, `tier0-info-for-overlay`, `curie_to_pmids`, `curie_ngd`, `fda_approved_drugs`. Targets: `arax_databases`, `cicd`, `arax_ncats`, `itrb_sftp`.
+Artifacts: `autocomplete`, `tier0-info-for-overlay`, `curie_to_pmids`, `curie_ngd`, `fda_approved_drugs`. Targets: `arax_databases`, `cicd`, `arax_ncats`, `kg2webhost`, `itrb_sftp`.
 
 | Option | What it does |
 |---|---|
