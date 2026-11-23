@@ -5,9 +5,9 @@ from pathlib import PurePosixPath
 import pytest
 
 # RTXConfiguration reads each of these with [...], so a missing one stops ARAX.
-REQUIRED_KEYS = {"cohd_database", "curie_to_pmids", "curie_ngd", "kg2c_sqlite", "tier0_sqlite",
+REQUIRED_KEYS = {"cohd_database", "curie_to_pmids", "curie_ngd", "info_for_overlay_sqlite",
                  "fda_approved_drugs", "autocomplete", "explainable_dtd_db"}
-BUILT_KEYS = {"curie_to_pmids", "curie_ngd", "kg2c_sqlite", "tier0_sqlite",
+BUILT_KEYS = {"curie_to_pmids", "curie_ngd", "info_for_overlay_sqlite",
               "fda_approved_drugs", "autocomplete"}
 
 
@@ -28,7 +28,6 @@ def test_built_entries_point_at_this_builds_files(downloads, build_dir):
         assert (build_dir / path.name).is_file(), f"{key}: {path.name} was not built"
         # ARAX_database_manager takes the version from after the last "_v".
         assert path.name.split("_v")[-1].split(".sqlite")[0], key
-    assert downloads["tier0_sqlite"] == downloads["kg2c_sqlite"]
 
 
 def test_built_entries_have_md5s(downloads, build_dir):

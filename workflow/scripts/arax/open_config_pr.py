@@ -34,7 +34,7 @@ PROTECTED_BRANCHES = {"master", "main", "production", "itrb-test", "dev"}
 
 
 # The database_downloads entries this pipeline builds; see arax_config.smk.
-BUILT_KEYS = ("tier0_sqlite", "kg2c_sqlite", "autocomplete", "curie_to_pmids", "curie_ngd",
+BUILT_KEYS = ("info_for_overlay_sqlite", "autocomplete", "curie_to_pmids", "curie_ngd",
               "fda_approved_drugs")
 
 
@@ -100,7 +100,7 @@ def remote_heads(remote: str, branch: str) -> set[str]:
 
 def release_of(config: dict) -> str | None:
     """The YYYYMMDD of the Tier0 release a config_dbs.json points at."""
-    match = re.search(r"/tier0-(\d{8})/", config["database_downloads"].get("tier0_sqlite", ""))
+    match = re.search(r"/tier0-(\d{8})/", config["database_downloads"].get("info_for_overlay_sqlite", ""))
     return match[1] if match else None
 
 

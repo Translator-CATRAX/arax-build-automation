@@ -111,13 +111,25 @@ class TestApplyEntries:
 
     def test_a_renamed_key_stops(self):
         target = self.downloads("old")
-        del target["database_downloads"]["tier0_sqlite"]
+        del target["database_downloads"]["info_for_overlay_sqlite"]
         with pytest.raises(pr.Stop):
             pr.apply_built_entries(target, self.downloads("new"))
 
     def test_release_of(self):
         path = "/x/tier0-20261018/tier0-info-for-overlay_v1.0_tier0-20261018.sqlite"
-        assert pr.release_of({"database_downloads": {"tier0_sqlite": path}}) == "20261018"
+        assert pr.release_of({"database_downloads": {"info_for_overlay_sqlite": path}}) == "20261018"
+
+
+class TestLegacyOverlayKeys:
+    def test_old_keys_become_the_new_one(self):
+        downloads = {"kg2c_sqlite": "/x/overlay.sqlite", "tier0_sqlite": "/x/overlay.sqlite", "curie_ngd": "/x/ngd"}
+        cli.rename_legacy_overlay_keys(downloads)
+        assert downloads == {"info_for_overlay_sqlite": "/x/overlay.sqlite", "curie_ngd": "/x/ngd"}
+
+    def test_new_key_is_left_alone(self):
+        downloads = {"info_for_overlay_sqlite": "/x/overlay.sqlite"}
+        cli.rename_legacy_overlay_keys(downloads)
+        assert downloads == {"info_for_overlay_sqlite": "/x/overlay.sqlite"}
 
 
 class TestVersions:

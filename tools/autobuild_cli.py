@@ -53,7 +53,7 @@ ARTIFACTS = (
     Artifact("autocomplete", "autocomplete", "autocomplete_v{version}_{tier0}.sqlite",
              "autocomplete", ("autocomplete",), ("test_autocomplete.py",)),
     Artifact("tier0-info-for-overlay", "overlay", "tier0-info-for-overlay_v{version}_{tier0}.sqlite",
-             "tier0_info_for_overlay", ("tier0_sqlite", "kg2c_sqlite"), ("test_overlay.py",)),
+             "tier0_info_for_overlay", ("info_for_overlay_sqlite",), ("test_overlay.py",)),
     Artifact("curie_to_pmids", "curie_to_pmids", "curie_to_pmids_v{version}_{tier0}.sqlite",
              "curie_to_pmids", ("curie_to_pmids",), ("test_curie_to_pmids.py",)),
     Artifact("curie_ngd", "curie_ngd", "curie_ngd_v{version}_{tier0}.sqlite",
@@ -368,9 +368,18 @@ def builder_command(build: Build, name: str, paths: dict[str, Path], directory: 
     raise AssertionError(name)
 
 
+def rename_legacy_overlay_keys(downloads: dict[str, str]) -> None:
+    """Builds from before RTX renamed these two keys to info_for_overlay_sqlite keep the old names."""
+    overlay = downloads.pop("kg2c_sqlite", None)
+    tier0 = downloads.pop("tier0_sqlite", None)
+    if "info_for_overlay_sqlite" not in downloads and (overlay or tier0):
+        downloads["info_for_overlay_sqlite"] = overlay or tier0
+
+
 def write_config_dbs(build: Build, names: list[str], paths: dict[str, Path], directory: Path) -> None:
     """The newest config_dbs.json with only the rebuilt artifacts' entries changed."""
     config = json.loads(build.current_file("config_dbs.json").read_text())
+    rename_legacy_overlay_keys(config["database_downloads"])
     root = build.config["arax_db_root"].rstrip("/")
     for name in names:
         for key in BY_NAME[name].config_keys:
